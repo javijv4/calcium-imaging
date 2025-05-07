@@ -1,0 +1,8 @@
+test_data*/
+*.png
+*.tif
+**/__pycache__/
+old/
+*.mat
+*.egg-info
+.venv/

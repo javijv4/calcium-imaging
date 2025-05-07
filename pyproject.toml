@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+
+[project]
+name = "calcium-imaging"
+version = "0.0.0"
+authors = [
+  { name="Javiera Jilberto", email="jilberto@umich.edu" },
+]
+description = "Python scripts to analyze calcium images"
+readme = "README.md"
+license = { file="LICENSE" }
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+  "numpy",
+  "matplotlib",
+  "scipy",
+  "scikit-image",
+  "tqdm",
+  "pandas",
+  "itk-elastix"
+]
