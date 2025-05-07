@@ -51,7 +51,6 @@ mat_files = sorted(mat_files)
 # Removing warped files
 mat_files = [f for f in mat_files if not f.endswith('_warped.mat')]
 
-
 for fname in mat_files:
     if ('nofibers' in fname) or ('0CF' in fname):
         is_one_region = False           # If several regions are to be analyzed, set to False.
