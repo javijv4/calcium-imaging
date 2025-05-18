@@ -28,10 +28,10 @@ tissue_div_y = 6
 imreg.NCORES = 10                # Number of cores for registration 
 threshold_value = 0              # If 0, otsu thresholding is used
 
-force_registration = False
+force_registration = True
 force_mask_creation = False     # Force the creation of a new tissue mask
 
-fname = 'test_data/fibers_0CF_day7-01.mat'
+fname = 'test_data2/fibers_iPSCCF_day7-06.mat'
 
 if ('nofibers' in fname) or ('0CF' in fname):
     is_one_region = False           # If several regions are to be analyzed, set to False.
@@ -58,10 +58,8 @@ else:
     mask = skio.imread(f'{path}/{sample}_tissue_mask.tif') // 255  # Load the mask and convert to binary (0s and 1s)
     mask = mask.astype(bool)  # Ensure it's binary for consistency
 
-
-# Divide tissue into regions
+# Register
 if is_one_region:
-    regions = imu.divide_tissue_in_regions(mask, ny=tissue_div_y, nx=tissue_div_x)
     # Register all frames
     if force_registration or not os.path.exists(f'{path}/{sample}_warped.mat'):
         print('Registering images...')
@@ -74,9 +72,17 @@ if is_one_region:
         warped_data = io.loadmat(f'{path}/{sample}_warped.mat')['warped_data']
 
 else:
-    regions = imu.find_tissue_regions(data, mask)
     warped_data = data
 
+# Rotate the data such that the tissue is vertical
+print('Rotating data...')
+warped_data, mask = imu.rotate_data(warped_data, mask)
+
+# Divide the tissue in regions
+if is_one_region:
+    regions = imu.divide_tissue_in_regions(mask, ny=tissue_div_y, nx=tissue_div_x)
+else:
+    regions = imu.find_tissue_regions(data, mask)
 
 # Evaluate intensities in the whole tissue
 if is_one_region:
@@ -165,5 +171,5 @@ np.savetxt(f'{path}/{sample}_raw_output.csv',
             delimiter=',', fmt='%s', header='Time,' + ','.join(['Tissue'] + [f'Region {i+1}' for i in range(len(calcium_traces))]), comments='')
 
 # Plot
-pu.plot_regions_traces(data, regions, calcium_traces)
+pu.plot_regions_traces(warped_data, regions, calcium_traces)
 plt.savefig(f'{path}/{sample}_regions_traces.png', dpi=300, bbox_inches='tight')

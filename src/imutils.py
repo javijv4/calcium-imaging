@@ -11,7 +11,7 @@ import numpy as np
 from scipy.io import loadmat
 from scipy.spatial import KDTree
 
-from skimage import filters, morphology, measure, draw
+from skimage import filters, morphology, measure, draw, transform
 
 import matplotlib.pyplot as plt
 from matplotlib.widgets import PolygonSelector, SpanSelector
@@ -79,6 +79,44 @@ def fix_weird_cut(data, cut=512):
     new_data[:,data.shape[1]-cut:,:] = data[:,0:cut,:]
     data = new_data
     return data
+
+
+def rotate_data(data, mask):
+    # Find the major axis of the mask and rotate the mask
+    props = measure.regionprops(mask.astype(int))
+
+    if len(props) > 0:
+        # Get the orientation of the largest region
+        orientation = props[0].orientation  # Angle in radians
+        centroid = props[0].centroid
+
+        mask_aux = mask.astype(int)
+
+        # Rotate the mask to align with the major axis
+        rotated_mask = transform.rotate(mask_aux, angle=np.degrees(-orientation), center=centroid, mode='constant', preserve_range=True, cval=-1)
+        rotated_mask = np.round(rotated_mask).astype(int)
+
+        pad_mask = rotated_mask == -1
+        pad_mask = morphology.binary_dilation(pad_mask)
+
+        rotated_mask[pad_mask] = -1
+
+        # Check where to cut
+        diff = np.abs(np.diff(rotated_mask, axis=1))
+        diff_vals = np.max(diff, axis=1)
+        keep = np.where(diff_vals < 2)[0]
+        rotated_mask = rotated_mask[keep, :]
+        rotated_mask = np.isclose(rotated_mask, 1)
+
+        # Rotate the data to align with the rotated mask
+        rotated_data = [transform.rotate(data[:,:,i], angle=np.degrees(-orientation), center=centroid, preserve_range=True) for i in range(data.shape[2])]
+        rotated_data = np.dstack([frame[keep, :] for frame in rotated_data])
+    else:
+        print("No regions found in the mask.")
+        rotated_mask = mask
+        rotated_data = data
+
+    return rotated_data, rotated_mask
 
 
 def divide_tissue_in_regions(mask, nx=20, ny=5):
