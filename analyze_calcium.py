@@ -78,10 +78,8 @@ for fname in mat_files:
         mask = mask.astype(bool)  # Ensure it's binary for consistency
 
 
-    # Divide tissue into regions
+    # Register
     if is_one_region:
-        regions = imu.divide_tissue_in_regions(mask, ny=tissue_div_y, nx=tissue_div_x)
-
         # Register all frames
         if force_registration or not os.path.exists(f'{path}/{sample}_warped.mat'):
             print('Registering images...')
@@ -94,8 +92,17 @@ for fname in mat_files:
             warped_data = io.loadmat(f'{path}/{sample}_warped.mat')['warped_data']
 
     else:
-        regions = imu.find_tissue_regions(data, mask)
         warped_data = data
+
+    # Rotate the data such that the tissue is vertical
+    print('Rotating data...')
+    warped_data, mask = imu.rotate_data(warped_data, mask)
+
+    # Divide the tissue in regions
+    if is_one_region:
+        regions = imu.divide_tissue_in_regions(mask, ny=tissue_div_y, nx=tissue_div_x)
+    else:
+        regions = imu.find_tissue_regions(data, mask)
 
 
     # Evaluate intensities in the whole tissue
