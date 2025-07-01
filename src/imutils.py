@@ -16,6 +16,10 @@ from skimage import filters, morphology, measure, draw, transform
 import matplotlib.pyplot as plt
 from matplotlib.widgets import PolygonSelector, SpanSelector
 
+import tkinter as tk
+from tkinter import ttk
+from PIL import Image, ImageTk
+
 
 
 def load_data(fname, videothresh=None, fix_cut=True):
@@ -217,6 +221,56 @@ def find_tissue_regions_interactively(data, tissue_mask):
     
     return regions
 
+def threshold_gui(image_array, mask=None):
+    if image_array.ndim != 2:
+        raise ValueError("image_array must be 2D")
+
+    if mask is not None:
+        if mask.shape != image_array.shape:
+            raise ValueError("Mask shape must match image shape")
+        mask = mask.astype(bool)
+    else:
+        mask = np.ones_like(image_array, dtype=bool)
+
+    window = tk.Tk()
+    window.title("Adjust Threshold - Hit Done when at Correct Threshold")
+
+    # Convert to PIL image for display
+    original_img = Image.fromarray(image_array.astype(np.uint8))
+    photo_img = ImageTk.PhotoImage(original_img)
+
+    label = tk.Label(window, image=photo_img)
+    label.image = photo_img
+    label.pack()
+
+    initial_value = filters.threshold_otsu(image_array[mask > 0])
+    threshold_container = {'value': initial_value}
+
+    def update_threshold(val):
+        threshold_container['value'] = int(float(val))
+        # Create blank image
+        new_img_array = np.zeros_like(image_array, dtype=np.uint8)
+
+        # Apply threshold only inside mask
+        new_img_array[mask] = np.where(image_array[mask] > threshold_container['value'], 255, 0)
+
+        new_img = Image.fromarray(new_img_array)
+        photo_new_img = ImageTk.PhotoImage(new_img)
+        label.configure(image=photo_new_img)
+        label.image = photo_new_img
+
+    slider = ttk.Scale(window, from_=0, to=255, orient='horizontal', command=update_threshold)
+    slider.set(threshold_container['value'])
+    slider.pack(padx=10, pady=10)
+
+    def on_done():
+        window.destroy()
+
+    btn = tk.Button(window, text="Done", command=on_done)
+    btn.pack(pady=10)
+
+    window.mainloop()
+    return threshold_container['value']
 
 def find_tissue_regions(data, tissue_mask, threshold_value=None):
     max_data = np.max(data, axis=2)
@@ -225,7 +279,8 @@ def find_tissue_regions(data, tissue_mask, threshold_value=None):
 
     # Apply Otsu's threshold to the data
     if threshold_value is None:
-        threshold_value = filters.threshold_otsu(max_data[tissue_mask > 0])
+        # threshold_value = filters.threshold_otsu(max_data[tissue_mask > 0])
+        threshold_value = threshold_gui(image_array=max_data, mask=tissue_mask)
         binary_mask = max_data > threshold_value
     else:
         binary_mask = max_data > threshold_value
@@ -312,32 +367,69 @@ class MaskSelector:
             self.mask = self.get_mask()
             plt.close(self.ax.figure)
 
-
-def get_tissue_mask(data, is_one_region=False):
-        
-    if is_one_region:
-        if data.ndim == 3:          # We only care about the first frame
-            data = data[:, :, 0]
-
-        # # Apply Otsu's threshold to the data
-        threshold_value = filters.threshold_otsu(data)
-        binary_mask = data > threshold_value
-
-        binary_mask = morphology.binary_closing(binary_mask, footprint=morphology.disk(5))
-        binary_mask = morphology.binary_opening(binary_mask, footprint=morphology.disk(10))
-        binary_mask = filters.gaussian(binary_mask, sigma=10) > 0.5
-
-        # Keep only the largest object
-        labeled_slice = measure.label(binary_mask)
-        regions = measure.regionprops(labeled_slice)
-        if regions:
-            largest_region = max(regions, key=lambda r: r.area)
-            largest_mask = labeled_slice == largest_region.label
-            binary_mask = largest_mask
-
+def confirm_mask(mask):
+    from tkinter import Tk, Label, Button
+    from PIL import Image, ImageTk
     
-    else:
-        max_data = np.max(data, axis=2)
+    use_mask = None
+
+    def submit_yes():
+        nonlocal use_mask
+        use_mask = True
+        window.destroy()
+    
+    def submit_no():
+        nonlocal use_mask
+        use_mask = False
+        window.destroy()
+
+    window = Tk()
+    window.title("Confirm Mask")
+
+    # img = Image.open(mask_filename)
+    img = Image.fromarray(mask)
+    # img = img.resize((250, 250))
+    img = ImageTk.PhotoImage(img)
+    panel = Label(window, image=img)
+    panel.image = img 
+    panel.pack()
+
+    Label(window, text="Is the Mask Correct?").pack(pady=(10, 0))
+    Button(window, text='Yes', command=submit_yes).pack()
+    Button(window, text='No', command=submit_no).pack()
+
+    window.mainloop()
+
+    return use_mask
+
+def get_tissue_mask(data):
+        
+    # if is_one_region:
+    if data.ndim == 3:          # We only care about the first frame
+        all_data = data.copy()
+        data = data[:, :, 0]
+
+    # # Apply Otsu's threshold to the data
+    threshold_value = filters.threshold_otsu(data)
+    binary_mask = data > threshold_value
+
+    binary_mask = morphology.binary_closing(binary_mask, footprint=morphology.disk(5))
+    binary_mask = morphology.binary_opening(binary_mask, footprint=morphology.disk(10))
+    binary_mask = filters.gaussian(binary_mask, sigma=10) > 0.5
+
+    # Keep only the largest object
+    labeled_slice = measure.label(binary_mask)
+    regions = measure.regionprops(labeled_slice)
+    if regions:
+        largest_region = max(regions, key=lambda r: r.area)
+        largest_mask = labeled_slice == largest_region.label
+        binary_mask = largest_mask
+
+    mask_correct = confirm_mask(binary_mask.astype(np.uint8) * 255)
+
+    # else:
+    if not mask_correct:
+        max_data = np.max(all_data, axis=2)
         _, ax = plt.subplots()
         selector = MaskSelector(ax, max_data)
         plt.show()

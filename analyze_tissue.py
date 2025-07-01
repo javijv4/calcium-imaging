@@ -31,7 +31,8 @@ threshold_value = 0              # If 0, otsu thresholding is used
 force_registration = False
 force_mask_creation = False     # Force the creation of a new tissue mask
 
-fname = 'test_data2/nofibers_0CF_day7-01.mat'
+# fname = 'test_data2/nofibers_0CF_day7-01.mat'
+fname = './nofibers_0CF_day7-01.mat'
 
 if ('nofibers' in fname) or ('0CF' in fname):
     is_one_region = False           # If several regions are to be analyzed, set to False.
@@ -49,7 +50,7 @@ data = imu.load_data(fname, videothresh=videothresh)
 # Get tissue mask
 if force_mask_creation or not os.path.exists(f'{path}/{sample}_tissue_mask.tif'):
     print('Creating tissue mask...')
-    mask = imu.get_tissue_mask(data, is_one_region=is_one_region)  # This will create a binary mask of the tissue
+    mask = imu.get_tissue_mask(data)  # This will create a binary mask of the tissue
     skio.imsave(f'{path}/{sample}_tissue_mask.tif', mask.astype(np.uint8) * 255)  # Save mask for visualization
 else:
     print('Loading existing tissue mask...')
@@ -76,6 +77,7 @@ else:
 # Rotate the data such that the tissue is vertical
 print('Rotating data...')
 warped_data, mask = imu.rotate_data(warped_data, mask)
+skio.imsave(f'{path}/{sample}_tissue_mask_rotated.tif', mask.astype(np.uint8) * 255)
 
 # Divide the tissue in regions
 if is_one_region:
@@ -114,6 +116,9 @@ for i, trace in enumerate(traces.T):
                              bpm, bpm_std, timing_irregularity, upstroke_time, amplitude)
     calcium_traces.append(ctrace)
     valid_regions.append(ctrace.region)  # Add region number to the list of regions
+
+pu.plot_regions_traces(warped_data, regions, calcium_traces)
+plt.savefig(f'{path}/{sample}_regions_traces_initial.png', dpi=300, bbox_inches='tight')
 
 # Delete non-valid regions
 valid_mask = np.isin(regions, valid_regions)  # Create a mask for valid regions
