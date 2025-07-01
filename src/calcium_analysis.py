@@ -21,6 +21,7 @@ def analyze_trace(trace):
     min_signal = np.min(filt_trace)
     prominence = (max_signal - min_signal) * 0.5
     max_peaks_idx, _ = find_peaks(filt_trace, prominence=prominence)
+    
     if len(max_peaks_idx) <= 3:         # If there are not enough peaks, return empty lists
         return filt_trace, [], []
 

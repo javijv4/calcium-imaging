@@ -261,15 +261,17 @@ def plot_regions_traces(data, regions, calcium_traces, framerate=1):
     warped_ax.axis('off')
 
     # Overlay regions with transparency
+    masked_regions = regions.astype(np.float32)  # Ensure regions is float for proper alpha blending
+    masked_regions[regions == 0] = np.nan  # Set regions == 0 to NaN for transparency
+    masked_regions = np.ma.masked_invalid(masked_regions)
     regions_overlay = warped_ax.imshow(
-        regions, cmap='jet', alpha=0.2, aspect='auto', norm=Normalize(vmin=1, vmax=np.max(regions))
+        masked_regions, cmap='jet', alpha=0.6, aspect='auto', norm=Normalize(vmin=1, vmax=np.max(regions))
     )
-    regions_overlay.set_alpha(np.where(regions == 0, 0, 0.5))  # Fully transparent where regions == 0
 
     # Right subplot: plot the traces
     traces_ax = axes[1]
     time = np.arange(traces.shape[1]) / framerate
-    cmap = plt.cm.get_cmap('jet', np.max(regions))  # Use the same colormap as the regions
+    cmap = plt.get_cmap('jet', np.max(regions))  # Use the same colormap as the regions
     for trace, region in zip(traces, traces_regions):
         color = to_rgba(cmap(region))  # Get the color corresponding to the region
         traces_ax.plot(time, trace, alpha=1.0, color=color)

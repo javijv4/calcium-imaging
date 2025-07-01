@@ -28,16 +28,15 @@ tissue_div_y = 6
 imreg.NCORES = 10                # Number of cores for registration 
 threshold_value = 0              # If 0, otsu thresholding is used
 
-force_registration = True
+force_registration = False
 force_mask_creation = False     # Force the creation of a new tissue mask
 
-fname = 'test_data2/fibers_iPSCCF_day7-06.mat'
+fname = 'test_data2/nofibers_0CF_day7-01.mat'
 
 if ('nofibers' in fname) or ('0CF' in fname):
     is_one_region = False           # If several regions are to be analyzed, set to False.
 else:
     is_one_region = True            # If several regions are to be analyzed, set to False.
-
 
 
 # Dealing with paths
@@ -82,19 +81,19 @@ warped_data, mask = imu.rotate_data(warped_data, mask)
 if is_one_region:
     regions = imu.divide_tissue_in_regions(mask, ny=tissue_div_y, nx=tissue_div_x)
 else:
-    regions = imu.find_tissue_regions(data, mask)
+    regions = imu.find_tissue_regions(warped_data, mask)
 
 # Evaluate intensities in the whole tissue
 if is_one_region:
     tissue_trace = imu.evaluate_regional_intensities(warped_data, mask.astype(int))[:,0]
 
-    filtered_traces, max_peaks_idx, min_peaks_idx = ca.analyze_trace(tissue_trace)
+    filtered_trace, max_peaks_idx, min_peaks_idx = ca.analyze_trace(tissue_trace)
     if len(max_peaks_idx) <= 2:     # No peaks were found
         bpm, bpm_std, timing_irregularity, upstroke_time, amplitude = 0, 0, 0, 0, 0
     else:
-        bpm, bpm_std, timing_irregularity, upstroke_time, amplitude = ca.trace_outputs(filtered_traces, max_peaks_idx, 
+        bpm, bpm_std, timing_irregularity, upstroke_time, amplitude = ca.trace_outputs(filtered_trace, max_peaks_idx, 
                                                                             min_peaks_idx, framerate)
-    tissue_calcium_trace = ca.CalciumTrace(filtered_traces, max_peaks_idx, min_peaks_idx, 0, 
+    tissue_calcium_trace = ca.CalciumTrace(filtered_trace, max_peaks_idx, min_peaks_idx, 0, 
                                 bpm, bpm_std, timing_irregularity, upstroke_time, amplitude)
 
 
@@ -105,16 +104,16 @@ traces = imu.evaluate_regional_intensities(warped_data, regions)
 calcium_traces = []
 valid_regions = []
 for i, trace in enumerate(traces.T):
-    filtered_traces, max_peaks_idx, min_peaks_idx = ca.analyze_trace(trace)
+    filtered_trace, max_peaks_idx, min_peaks_idx = ca.analyze_trace(trace)
+
     if len(max_peaks_idx) <= 2:     # No peaks were found
         continue
-    bpm, bpm_std, timing_irregularity, upstroke_time, amplitude = ca.trace_outputs(filtered_traces, max_peaks_idx, 
+    bpm, bpm_std, timing_irregularity, upstroke_time, amplitude = ca.trace_outputs(filtered_trace, max_peaks_idx, 
                                                                           min_peaks_idx, framerate)
-    ctrace = ca.CalciumTrace(filtered_traces, max_peaks_idx, min_peaks_idx, i+1, 
+    ctrace = ca.CalciumTrace(filtered_trace, max_peaks_idx, min_peaks_idx, i+1, 
                              bpm, bpm_std, timing_irregularity, upstroke_time, amplitude)
     calcium_traces.append(ctrace)
     valid_regions.append(ctrace.region)  # Add region number to the list of regions
-
 
 # Delete non-valid regions
 valid_mask = np.isin(regions, valid_regions)  # Create a mask for valid regions
@@ -127,8 +126,8 @@ for i, ctrace in enumerate(calcium_traces):
 
 
 # Synchronicity
-traces = np.vstack([[ctrace.trace for ctrace in calcium_traces]]).T
-synchronicity = np.mean(np.corrcoef(traces.T))
+clean_traces = np.vstack([[ctrace.trace for ctrace in calcium_traces]]).T
+synchronicity = np.mean(np.corrcoef(clean_traces.T))
 
 
 # Tissue outputs
@@ -160,7 +159,7 @@ np.savetxt(f'{path}/{sample}_region_output.csv',
 
 
 # Raw outputs
-time = np.arange(traces.shape[0]) / framerate  # Time in seconds
+time = np.arange(clean_traces.shape[0]) / framerate  # Time in seconds
 traces_raw = [time]
 traces_raw += [tissue_calcium_trace.trace] if is_one_region else [np.zeros(len(time))]
 traces_raw += [trace.trace for trace in calcium_traces]

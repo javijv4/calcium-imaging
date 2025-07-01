@@ -57,7 +57,6 @@ for fname in mat_files:
     else:
         is_one_region = True            # If several regions are to be analyzed, set to False.
 
-    print(f"Processing {fname}...")
 
     # Dealing with paths
     sample = os.path.basename(fname).replace('.mat', '')
@@ -76,7 +75,6 @@ for fname in mat_files:
         # Load the saved mask
         mask = skio.imread(f'{path}/{sample}_tissue_mask.tif') // 255  # Load the mask and convert to binary (0s and 1s)
         mask = mask.astype(bool)  # Ensure it's binary for consistency
-
 
     # Register
     if is_one_region:
@@ -102,41 +100,40 @@ for fname in mat_files:
     if is_one_region:
         regions = imu.divide_tissue_in_regions(mask, ny=tissue_div_y, nx=tissue_div_x)
     else:
-        regions = imu.find_tissue_regions(data, mask)
-
+        regions = imu.find_tissue_regions(warped_data, mask)
 
     # Evaluate intensities in the whole tissue
     if is_one_region:
         tissue_trace = imu.evaluate_regional_intensities(warped_data, mask.astype(int))[:,0]
 
-        filtered_traces, max_peaks_idx, min_peaks_idx = ca.analyze_trace(tissue_trace)
+        filtered_trace, max_peaks_idx, min_peaks_idx = ca.analyze_trace(tissue_trace)
         if len(max_peaks_idx) <= 2:     # No peaks were found
             bpm, bpm_std, timing_irregularity, upstroke_time, amplitude = 0, 0, 0, 0, 0
         else:
-            bpm, bpm_std, timing_irregularity, upstroke_time, amplitude = ca.trace_outputs(filtered_traces, max_peaks_idx, 
+            bpm, bpm_std, timing_irregularity, upstroke_time, amplitude = ca.trace_outputs(filtered_trace, max_peaks_idx, 
                                                                                 min_peaks_idx, framerate)
-        tissue_calcium_trace = ca.CalciumTrace(filtered_traces, max_peaks_idx, min_peaks_idx, 0, 
+        tissue_calcium_trace = ca.CalciumTrace(filtered_trace, max_peaks_idx, min_peaks_idx, 0, 
                                     bpm, bpm_std, timing_irregularity, upstroke_time, amplitude)
 
 
     # Evaluate intensities in the regions
     traces = imu.evaluate_regional_intensities(warped_data, regions)
-
+    
     # Analyze traces
     calcium_traces = []
     valid_regions = []
     for i, trace in enumerate(traces.T):
-        filtered_traces, max_peaks_idx, min_peaks_idx = ca.analyze_trace(trace)
+        filtered_trace, max_peaks_idx, min_peaks_idx = ca.analyze_trace(trace)
+
         if len(max_peaks_idx) <= 2:     # No peaks were found
             continue
-        bpm, bpm_std, timing_irregularity, upstroke_time, amplitude = ca.trace_outputs(filtered_traces, max_peaks_idx, 
+        bpm, bpm_std, timing_irregularity, upstroke_time, amplitude = ca.trace_outputs(filtered_trace, max_peaks_idx, 
                                                                             min_peaks_idx, framerate)
-        ctrace = ca.CalciumTrace(filtered_traces, max_peaks_idx, min_peaks_idx, i+1, 
+        ctrace = ca.CalciumTrace(filtered_trace, max_peaks_idx, min_peaks_idx, i+1, 
                                 bpm, bpm_std, timing_irregularity, upstroke_time, amplitude)
         calcium_traces.append(ctrace)
         valid_regions.append(ctrace.region)  # Add region number to the list of regions
-
-
+        
     # Delete non-valid regions
     valid_mask = np.isin(regions, valid_regions)  # Create a mask for valid regions
     regions[~valid_mask] = 0  # Set non-valid regions to 0
@@ -148,8 +145,8 @@ for fname in mat_files:
 
 
     # Synchronicity
-    traces = np.vstack([[ctrace.trace for ctrace in calcium_traces]]).T
-    synchronicity = np.mean(np.corrcoef(traces.T))
+    clean_traces = np.vstack([[ctrace.trace for ctrace in calcium_traces]]).T
+    synchronicity = np.mean(np.corrcoef(clean_traces.T))
 
 
     # Tissue outputs
@@ -181,7 +178,7 @@ for fname in mat_files:
 
 
     # Raw outputs
-    time = np.arange(traces.shape[0]) / framerate  # Time in seconds
+    time = np.arange(clean_traces.shape[0]) / framerate  # Time in seconds
     traces_raw = [time]
     traces_raw += [tissue_calcium_trace.trace] if is_one_region else [np.zeros(len(time))]
     traces_raw += [trace.trace for trace in calcium_traces]
@@ -192,6 +189,6 @@ for fname in mat_files:
                 delimiter=',', fmt='%s', header='Time,' + ','.join(['Tissue'] + [f'Region {i+1}' for i in range(len(calcium_traces))]), comments='')
 
     # Plot
-    pu.plot_regions_traces(data, regions, calcium_traces)
+    pu.plot_regions_traces(warped_data, regions, calcium_traces)
     plt.savefig(f'{path}/{sample}_regions_traces.png', dpi=300, bbox_inches='tight')
     plt.close('all')  # Close all figures to free memory
