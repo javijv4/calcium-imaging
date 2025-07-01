@@ -31,8 +31,8 @@ threshold_value = 0              # If 0, otsu thresholding is used
 force_registration = False
 force_mask_creation = False     # Force the creation of a new tissue mask
 
-# fname = 'test_data2/nofibers_0CF_day7-01.mat'
-fname = './nofibers_0CF_day7-01.mat'
+fname = 'test_data2/nofibers_0CF_day7-01.mat'
+# fname = './nofibers_0CF_day7-01.mat'
 
 if ('nofibers' in fname) or ('0CF' in fname):
     is_one_region = False           # If several regions are to be analyzed, set to False.
