@@ -25,7 +25,8 @@ if __name__ == "__main__":
 
     # USER INPUTS
     imreg.NCORES = 10                # Number of cores for registration 
-    videothresh = (200, 500)         # To crop in time
+    # videothresh = (200, 500)         # To crop in time
+    videothresh = (100, 600) 
 
     # Select a folder using the GUI
     selected_folder = select_folder()
@@ -36,8 +37,8 @@ if __name__ == "__main__":
     
     # Register each mat file
     for fname in mat_files:
-        if ('nofibers' in fname) or ('0CF' in fname):
-            continue           # These files do not need to be registered. @Maggie: Is this correct?
+        # if ('nofibers' in fname) or ('0CF' in fname):
+        #     continue           # These files do not need to be registered. @Maggie: Is this correct?
         
         print(f"Registering {fname}...")
 

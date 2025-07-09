@@ -7,6 +7,7 @@ Created on 2025/04/16 18:18:09
 '''
 
 import numpy as np
+import cv2
 
 from scipy.io import loadmat
 from scipy.spatial import KDTree
@@ -15,14 +16,60 @@ from skimage import filters, morphology, measure, draw, transform
 
 import matplotlib.pyplot as plt
 from matplotlib.widgets import PolygonSelector, SpanSelector
+from matplotlib import cm
 
 import tkinter as tk
 from tkinter import ttk
 from PIL import Image, ImageTk
 
-
-
+# Loading Data
 def load_data(fname, videothresh=None, fix_cut=True):
+    print(f"Loading data from {fname}")
+
+    import h5py
+    def is_mat73(fname):
+        """Check whether the .mat file is in v7.3 (HDF5) format."""
+        with open(fname, 'rb') as f:
+            header = f.read(128)
+        return b'HDF5' in header
+
+    if is_mat73(fname):
+        print("Detected v7.3+ .mat file — using h5py.")
+        with h5py.File(fname, 'r') as f:
+            # Mimic ['data'][0][0] from loadmat
+            data_ref = f['data'][()][0, 0]
+            data_group = f[data_ref]
+
+            images = []
+            for i in range(len(data_group)):
+                # Each entry is a reference to a matrix, so dereference and grab [0]
+                ref = data_group[str(i)][0]
+                image = f[ref][()]
+                images.append(image)
+    else:
+        print("Detected v7 or earlier .mat file — using scipy.io.loadmat.")
+        mat = loadmat(fname)
+        data_struct = mat['data'][0][0]
+
+        images = []
+        for i in range(len(data_struct)):
+            images.append(data_struct[i][0])
+
+    data = np.dstack(images)
+
+    if fix_cut:
+        data = fix_weird_cut(data)
+
+    data = data[1:-1, 1:-1]  # Remove border pixels
+
+    if videothresh is None:
+        videothresh = select_region(data)
+
+    data = data[:, :, videothresh[0]:videothresh[1]]
+
+    return data
+
+def load_data_scipy(fname, videothresh=None, fix_cut=True):
     print(f"Loading data from {fname}")
     data = loadmat(fname)['data'][0][0]
 
@@ -40,7 +87,6 @@ def load_data(fname, videothresh=None, fix_cut=True):
     data = data[:, :, videothresh[0]:videothresh[1]]
 
     return data
-
 
 def select_region(data):
     sum_values = np.sum(data, axis=(0, 1))
@@ -76,7 +122,6 @@ def select_region(data):
 
     return selected_xlim
 
-
 def fix_weird_cut(data, cut=512):
     new_data = np.zeros_like(data)
     new_data[:,0:data.shape[1]-cut:,:] = data[:,cut:,:]
@@ -84,6 +129,53 @@ def fix_weird_cut(data, cut=512):
     data = new_data
     return data
 
+# Data rotation options
+def rotate_data_cv2(data, mask):
+    props = measure.regionprops(mask.astype(int))
+
+    if len(props) == 0:
+        print("No regions found in the mask.")
+        return mask, data
+
+    # Orientation and centroid
+    orientation = props[0].orientation  # Radians
+    centroid = props[0].centroid
+    angle_deg = -np.degrees(orientation)
+    h, w = mask.shape
+    center = (int(centroid[1]), int(centroid[0]))  # (x, y)
+
+    # Rotation matrix
+    rot_mat = cv2.getRotationMatrix2D(center, angle_deg, 1.0)
+
+    # === Rotate mask ===
+    rotated_mask = cv2.warpAffine(mask.astype(int), rot_mat, (w, h),
+                                  flags=cv2.INTER_NEAREST,
+                                  borderMode=cv2.BORDER_CONSTANT,
+                                  borderValue=-1)
+
+    # Dilate padded regions
+    pad_mask = rotated_mask == -1
+    pad_mask = morphology.binary_dilation(pad_mask)
+    rotated_mask[pad_mask] = -1  # Re-assign after dilation
+
+    # Crop: keep rows without abrupt transitions
+    diff = np.abs(np.diff(rotated_mask, axis=1))
+    diff_vals = np.max(diff, axis=1)
+    keep_rows = np.where(diff_vals < 2)[0]
+
+    rotated_mask = rotated_mask[keep_rows, :]
+    rotated_mask_bool = np.isclose(rotated_mask, 1) # rotated_mask == 1
+
+    # === Rotate data ===
+    rotated_data = np.empty((len(keep_rows), w, data.shape[2]), dtype=data.dtype)
+    for i in range(data.shape[2]):
+        rotated_frame = cv2.warpAffine(data[:, :, i], rot_mat, (w, h),
+                                       flags=cv2.INTER_LINEAR,
+                                       borderMode=cv2.BORDER_CONSTANT,
+                                       borderValue=0)
+        rotated_data[:, :, i] = rotated_frame[keep_rows, :]
+
+    return rotated_data, rotated_mask_bool
 
 def rotate_data(data, mask):
     # Find the major axis of the mask and rotate the mask
@@ -122,7 +214,7 @@ def rotate_data(data, mask):
 
     return rotated_data, rotated_mask
 
-
+# Automated thresholding
 def divide_tissue_in_regions(mask, nx=20, ny=5):
     if mask.ndim == 3:
         mask = mask[:, :,0]
@@ -171,8 +263,7 @@ def divide_tissue_in_regions(mask, nx=20, ny=5):
 
     return cell
 
-
-
+# GUI for manual thresholding
 def find_tissue_regions_interactively(data, tissue_mask):
     max_data = np.max(data, axis=2)
     if tissue_mask.ndim == 3:
@@ -192,7 +283,7 @@ def find_tissue_regions_interactively(data, tissue_mask):
     # Display the initial binary mask with transparency
     masked_binary_mask = np.ma.masked_where(binary_mask == 0, binary_mask)
     img = ax.imshow(masked_binary_mask, cmap='viridis', vmin=0, vmax=1, alpha=0.5)
-    ax.set_title('Adjust the threshold using the slider below')
+    ax.set_title('Adjust the threshold using the slider below - Exit window when done')
 
     # Slider for threshold adjustment
     ax_slider = plt.axes([0.2, 0.1, 0.65, 0.03])
@@ -220,6 +311,29 @@ def find_tissue_regions_interactively(data, tissue_mask):
     regions = measure.label(binary_mask)  # Label connected components
     
     return regions
+
+# Alternate Method
+def overlay_mask(image, mask, color=(0, 255, 0), alpha=0.4):
+    # Ensure image is 3-channel RGB
+    if image.ndim == 2:
+        image_rgb = cv2.cvtColor(image.astype(np.uint8), cv2.COLOR_GRAY2RGB)
+    else:
+        image_rgb = image.astype(np.uint8)
+
+    image_rgb = (image_rgb * 0.5).astype(np.uint8)
+
+    # Create a color mask
+    mask_color = np.zeros_like(image_rgb, dtype=np.uint8)
+    mask_color[mask > 0] = color
+
+    # Alpha blend only where mask is active
+    overlaid = image_rgb.copy()
+    mask_indices = mask > 0
+    overlaid[mask_indices] = (
+        alpha * mask_color[mask_indices] + (1 - alpha) * image_rgb[mask_indices]
+    ).astype(np.uint8)
+
+    return overlaid
 
 def threshold_gui(image_array, mask=None):
     if image_array.ndim != 2:
@@ -252,9 +366,12 @@ def threshold_gui(image_array, mask=None):
         new_img_array = np.zeros_like(image_array, dtype=np.uint8)
 
         # Apply threshold only inside mask
-        new_img_array[mask] = np.where(image_array[mask] > threshold_container['value'], 255, 0)
+        new_img_array[mask] = np.where(image_array[mask] > threshold_container['value'], 1, 0) #255, 0)
 
-        new_img = Image.fromarray(new_img_array)
+        overlay_img = overlay_mask(image_array, new_img_array)
+
+        new_img = Image.fromarray(overlay_img)
+        # new_img = Image.fromarray(new_img_array)
         photo_new_img = ImageTk.PhotoImage(new_img)
         label.configure(image=photo_new_img)
         label.image = photo_new_img
@@ -272,8 +389,12 @@ def threshold_gui(image_array, mask=None):
     window.mainloop()
     return threshold_container['value']
 
+# Manual region selection w/ otsu
 def find_tissue_regions(data, tissue_mask, threshold_value=None):
-    max_data = np.max(data, axis=2)
+    if data.ndim != 2:
+        max_data = np.max(data, axis=2)
+    else:
+        max_data = data
     if tissue_mask.ndim == 3:
         tissue_mask = tissue_mask[:, :, 0]
 
@@ -293,7 +414,111 @@ def find_tissue_regions(data, tissue_mask, threshold_value=None):
     
     return regions
 
+# GUI for user region selection
+def region_division_gui(image_array, mask, ny, nx):
 
+    if image_array.ndim != 2:
+        raise ValueError("image_array must be 2D")
+
+    if mask is not None:
+        if mask.shape != image_array.shape:
+            raise ValueError("Mask shape must match image shape")
+        mask = mask.astype(bool)
+    else:
+        mask = np.ones_like(image_array, dtype=bool)
+
+    ret_val = {'Selected Option': 0}
+
+    def on_manual_select():
+        ret_val['Selected Option'] = 1
+        window.destroy()
+
+    def on_auto_select():
+        ret_val['Selected Option'] = 2
+        window.destroy()
+
+    window = tk.Tk()
+    window.title("Choose Region Selection Method")
+
+    # === Frame Setup ===
+    frm = ttk.Frame(window, padding=10)
+    frm.pack()
+
+    # === Title ===
+    title = ttk.Label(frm, text="Select Region Selection Method - Manual selection will open another window", 
+                      font=("Arial", 14))
+    title.grid(row=0, column=0, columnspan=2, pady=10)
+
+    # === Manual Image: thresholding ===
+    thresh = filters.threshold_otsu(image_array[mask])
+    manual_array = np.zeros_like(image_array, dtype=np.uint8)
+    manual_array[mask] = np.where(image_array[mask] > thresh, 1, 0)#255, 0)
+    overlay_img = overlay_mask(image_array, manual_array)
+    manual_img = ImageTk.PhotoImage(Image.fromarray(overlay_img))
+
+    manual_label = ttk.Label(frm, text="Manual (threshold-based)")
+    manual_label.grid(row=1, column=0)
+    manual_canvas = tk.Label(frm, image=manual_img)
+    manual_canvas.image = manual_img
+    manual_canvas.grid(row=2, column=0, padx=5)
+
+    # === Auto Image: grid division ===
+    # Normalize image_array to [0, 255] for display
+    base_image = image_array.astype(np.float32)
+    base_image = 255 * (base_image - base_image.min()) / (np.ptp(base_image) + 1e-8)
+    base_image = base_image.astype(np.uint8)
+
+    # Get labeled regions
+    auto_regions = divide_tissue_in_regions(mask, nx=nx, ny=ny)
+
+    # Map labels to colors using a colormap (e.g., viridis)
+    colormap = cm.get_cmap('viridis', np.max(auto_regions)+1)
+    colored_labels = (colormap(auto_regions)[:, :, :3] * 255).astype(np.uint8)
+
+    # Convert grayscale image to RGB
+    base_rgb = np.stack([base_image]*3, axis=-1)
+
+    # Alpha blend label overlay on top of grayscale image
+    alpha = 0.4
+    blended = (alpha * colored_labels + (1 - alpha) * base_rgb).astype(np.uint8)
+
+    # Convert to Tk image
+    auto_img = ImageTk.PhotoImage(Image.fromarray(blended))
+
+    auto_label = ttk.Label(frm, text="Auto (grid-based)")
+    auto_label.grid(row=1, column=1)
+    auto_canvas = tk.Label(frm, image=auto_img)
+    auto_canvas.image = auto_img
+    auto_canvas.grid(row=2, column=1, padx=5)
+
+    # === Buttons ===
+    btn_manual = ttk.Button(frm, text="Select Manual", command=on_manual_select)
+    btn_manual.grid(row=3, column=0, pady=10)
+
+    btn_auto = ttk.Button(frm, text="Select Auto", command=on_auto_select)
+    btn_auto.grid(row=3, column=1, pady=10)
+
+    window.mainloop()
+    return ret_val['Selected Option']
+
+# Allowing user to select method for region division
+def divide_regions_choice(data, mask, nx, ny):
+    if data.ndim != 2:
+        max_data = np.max(data, axis=2)
+    else:
+        max_data = data
+    if mask.ndim == 3:
+        tissue_mask = mask[:, :, 0]
+    else:
+        tissue_mask = mask
+
+    user_selection = region_division_gui(max_data, tissue_mask, ny=ny, nx=nx)
+
+    if user_selection == 1:
+        # return find_tissue_regions(data, mask), False
+        return find_tissue_regions_interactively(data, mask), False
+    else:
+        return divide_tissue_in_regions(mask, nx=nx, ny=ny), True
 
 def normalize_image(image):
     min_intensity = np.min(image)
@@ -313,7 +538,6 @@ def get_tissue_centroid(data):
     ij = np.array(np.where(binary_mask))
     centroid = np.mean(ij, axis=1)
     return centroid.astype(int)
-
 
 
 class MaskSelector:

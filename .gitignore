@@ -6,3 +6,5 @@ old/
 *.mat
 *.egg-info
 .venv/
+*.csv
+*.npz
