@@ -88,6 +88,7 @@ for fname in filenames:
         print('Rotating data...')
         warped_data, mask = imu.rotate_data(warped_data, mask)
         skio.imsave(f'{path}/{sample}_tissue_mask_rotated.tif', mask.astype(np.uint8) * 255)
+        skio.imsave(f'{path}/{sample}_warped_tissue_rotated.tif', warped_data)
     else:
         print("Loading Rotated Image & Mask")
         mask = skio.imread(f'{path}/{sample}_tissue_mask_rotated.tif') // 255
