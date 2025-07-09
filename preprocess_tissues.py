@@ -88,9 +88,10 @@ for fname in mat_files:
 
     # Rotate the data such that the tissue is vertical
     if not os.path.exists(f'{path}/{sample}_tissue_mask_rotated.tif'):
-        print('Rotating data...')
-        warped_data, mask = imu.rotate_data(warped_data, mask)
-        skio.imsave(f'{path}/{sample}_tissue_mask_rotated.tif', mask.astype(np.uint8) * 255)
+        # print('Rotating data...')
+        # warped_data, mask = imu.rotate_data(warped_data, mask)
+        # skio.imsave(f'{path}/{sample}_tissue_mask_rotated.tif', mask.astype(np.uint8) * 255)
+        continue
     else:
         print("Loading Rotated Image & Mask")
         mask = skio.imread(f'{path}/{sample}_tissue_mask_rotated.tif') // 255
@@ -99,6 +100,12 @@ for fname in mat_files:
     # Divide the tissue in regions
     if not os.path.exists(f'{path}/{sample}_region_information.npz'):
         print("Selecting regions")
+        if warped_data.ndim == 3:
+            data_2d = warped_data[:,:,0]
+            warped_data = data_2d.reshape((data_2d.shape[0], data_2d.shape[1], 1))
+        if mask.ndim == 3:
+            data_2d = mask[:,:,0]
+            mask = data_2d.reshape((data_2d.shape[0], data_2d.shape[1], 1))
         regions, is_one_region = imu.divide_regions_choice(warped_data, mask, nx=tissue_div_x, ny=tissue_div_y)
         np.savez(f'{path}/{sample}_region_information.npz', reg=regions, type=np.array([is_one_region]))
     else:
