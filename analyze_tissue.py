@@ -21,7 +21,7 @@ import plotutils as pu
 
 # USER INPUTS
 framerate = 65.18
-videothresh = (200, 500)         # To crop in time
+videothresh = (100, 600)         # To crop in time
 pixelsize = 0.908
 tissue_div_x = 2                # For one region tissues
 tissue_div_y = 6
@@ -29,9 +29,9 @@ imreg.NCORES = 10                # Number of cores for registration
 threshold_value = 0              # If 0, otsu thresholding is used
 
 force_registration = False
-force_mask_creation = False     # Force the creation of a new tissue mask
+force_mask_creation = True     # Force the creation of a new tissue mask
 
-fname = 'test_data2/nofibers_0CF_day7-01.mat'
+fname = 'test_data2/fibers_iPSCCF_day7-06.mat'
 # fname = './nofibers_0CF_day7-01.mat'
 
 if ('nofibers' in fname) or ('0CF' in fname):
@@ -51,12 +51,12 @@ data = imu.load_data(fname, videothresh=videothresh)
 if force_mask_creation or not os.path.exists(f'{path}/{sample}_tissue_mask.tif'):
     print('Creating tissue mask...')
     mask = imu.get_tissue_mask(data)  # This will create a binary mask of the tissue
-    skio.imsave(f'{path}/{sample}_tissue_mask.tif', mask.astype(np.uint8) * 255)  # Save mask for visualization
+    skio.imsave(f'{path}/{sample}_tissue_mask.tif', mask.T.astype(np.uint8) * 255)  # Save mask for visualization
 else:
     print('Loading existing tissue mask...')
     # Load the saved mask
     mask = skio.imread(f'{path}/{sample}_tissue_mask.tif') // 255  # Load the mask and convert to binary (0s and 1s)
-    mask = mask.astype(bool)  # Ensure it's binary for consistency
+    mask = mask.T.astype(bool)  # Ensure it's binary for consistency
 
 # Register
 if is_one_region:
@@ -101,13 +101,13 @@ if is_one_region:
 
 # Evaluate intensities in the regions
 traces = imu.evaluate_regional_intensities(warped_data, regions)
-
 # Analyze traces
 calcium_traces = []
 valid_regions = []
+filtered_traces = []
 for i, trace in enumerate(traces.T):
     filtered_trace, max_peaks_idx, min_peaks_idx = ca.analyze_trace(trace)
-
+    filtered_traces.append(filtered_trace)  # Store the filtered trace for later use
     if len(max_peaks_idx) <= 2:     # No peaks were found
         continue
     bpm, bpm_std, timing_irregularity, upstroke_time, amplitude = ca.trace_outputs(filtered_trace, max_peaks_idx, 
@@ -117,7 +117,8 @@ for i, trace in enumerate(traces.T):
     calcium_traces.append(ctrace)
     valid_regions.append(ctrace.region)  # Add region number to the list of regions
 
-pu.plot_regions_traces(warped_data, regions, calcium_traces)
+# Plot initial traces
+pu.plot_regions_traces(warped_data, regions, filtered_traces)
 plt.savefig(f'{path}/{sample}_regions_traces_initial.png', dpi=300, bbox_inches='tight')
 
 # Delete non-valid regions
