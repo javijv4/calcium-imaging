@@ -8,3 +8,5 @@ old/
 .venv/
 *.csv
 *.npz
+*.mhd
+*.raw

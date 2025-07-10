@@ -18,3 +18,15 @@ In VScode you can select the environment by using `Ctrl+Shift+P`, type Python Se
 ```
 python -m pip install -e .
 ```
+
+# Usage
+The code has three main scripts:
+1. Registration `register_images.py`
+2. Preprocessing `preprocess_tissues.py`
+3. Calcium Analysis `analyze_tissues.py`
+
+**You need to run these in order** . For each one of these you will select a folder containing `.mat` files to be analyzed. 
+
+# Outputs
+The code will output results for each tissue in `.csv` files and the results of the analysis for all tissues in a file called  `all_samples_output.csv`. 
+

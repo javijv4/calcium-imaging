@@ -41,8 +41,8 @@ def mat_to_tif_warped(input_path, output_path):
 
 if __name__ == "__main__":
     # Example usage
-    input_mat_file = "test_data/nofibers_0CF_day7-01.mat"  # Replace with your .mat file path
-    output_tif_file = "test_data/nofibers_0CF_day7-01.tif"  # Replace with your desired .tif file path
+    input_mat_file = "test_data2/fibers_iPSCCF_day7-06_warped.mat"  # Replace with your .mat file path
+    output_tif_file = "test_data2/fibers_iPSCCF_day7-06_warped.tif"  # Replace with your desired .tif file path
     
     if not os.path.exists(input_mat_file):
         print(f"Input file {input_mat_file} does not exist.")

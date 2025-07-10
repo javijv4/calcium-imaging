@@ -12,7 +12,7 @@ import cv2
 from scipy.io import loadmat
 from scipy.spatial import KDTree
 
-from skimage import filters, morphology, measure, draw, transform
+from skimage import filters, morphology, measure, draw, transform, exposure
 
 import matplotlib.pyplot as plt
 from matplotlib.widgets import PolygonSelector, SpanSelector
@@ -34,7 +34,7 @@ def load_data(fname, videothresh=None, fix_cut=True):
         return b'HDF5' in header
 
     if is_mat73(fname):
-        print("Detected v7.3+ .mat file — using h5py.")
+        # print("Detected v7.3+ .mat file — using h5py.")
         with h5py.File(fname, 'r') as f:
             # Mimic ['data'][0][0] from loadmat
             data_ref = f['data'][()][0, 0]
@@ -47,8 +47,8 @@ def load_data(fname, videothresh=None, fix_cut=True):
                 image = f[ref][()]
                 images.append(image)
     else:
-        print("Detected v7 or earlier .mat file — using scipy.io.loadmat.")
-        mat = loadmat(fname)
+        # print("Detected v7 or earlier .mat file — using scipy.io.loadmat.")
+        mat = loadmat(fname, variable_names=['data']) 
         data_struct = mat['data'][0][0]
 
         images = []
@@ -167,13 +167,13 @@ def rotate_data_cv2(data, mask):
     rotated_mask_bool = np.isclose(rotated_mask, 1) # rotated_mask == 1
 
     # === Rotate data ===
-    rotated_data = np.empty((len(keep_rows), w, data.shape[2]), dtype=data.dtype)
-    for i in range(data.shape[2]):
-        rotated_frame = cv2.warpAffine(data[:, :, i], rot_mat, (w, h),
+    rotated_data = np.empty((data.shape[0], len(keep_rows), w), dtype=data.dtype)
+    for i in range(data.shape[0]):
+        rotated_frame = cv2.warpAffine(data[i, :, :], rot_mat, (w, h),
                                     flags=cv2.INTER_LINEAR,
                                     borderMode=cv2.BORDER_CONSTANT,
                                     borderValue=0)
-        rotated_data[:, :, i] = rotated_frame[keep_rows, :]
+        rotated_data[i, :, :] = rotated_frame[keep_rows, :]
 
     return rotated_data, rotated_mask_bool
 
@@ -219,10 +219,6 @@ def divide_tissue_in_regions(mask, nx=20, ny=5):
     if mask.ndim == 3:
         mask = mask[:, :,0]
 
-    # Making sure mask is smooth
-    mask = morphology.binary_closing(mask, morphology.disk(21))
-    mask = filters.gaussian(mask, sigma=20) > 0.5
-
     # Get center of cells
     xlimits = np.where(np.sum(mask, axis=1)>0)[0]
     xlimits = [xlimits[0], xlimits[-1]]
@@ -264,11 +260,7 @@ def divide_tissue_in_regions(mask, nx=20, ny=5):
     return cell
 
 # GUI for manual thresholding
-def find_tissue_regions_interactively(data, tissue_mask):
-    if data.ndim != 2:
-        max_data = np.max(data, axis=2)
-    else:
-        max_data = data
+def find_tissue_regions_interactively(max_data, tissue_mask):
     if tissue_mask.ndim == 3:
         tissue_mask = tissue_mask[:, :, 0]
 
@@ -276,7 +268,7 @@ def find_tissue_regions_interactively(data, tissue_mask):
     plt.subplots_adjust(bottom=0.25)
 
     # Initial threshold value
-    threshold_value = filters.threshold_otsu(max_data)
+    threshold_value = filters.threshold_otsu(max_data[tissue_mask > 0])
     binary_mask = max_data > threshold_value
     binary_mask[tissue_mask == 0] = 0
 
@@ -536,11 +528,13 @@ def divide_regions_choice(data, mask, nx, ny):
     else:
         tissue_mask = mask
 
+    max_data = filters.gaussian(max_data, sigma=1)  # Smooth the data
+
     user_selection = region_division_gui(max_data, tissue_mask, ny=ny, nx=nx)
 
     if user_selection == 1:
         # return find_tissue_regions(data, mask), False
-        return find_tissue_regions_interactively(data, mask), False
+        return find_tissue_regions_interactively(max_data, mask), False
     else:
         return 0, True
 
@@ -615,7 +609,7 @@ class MaskSelector:
             self.mask = self.get_mask()
             plt.close(self.ax.figure)
 
-def confirm_mask(mask):
+def confirm_mask(mask, data):
     from tkinter import Tk, Label, Button
     from PIL import Image, ImageTk
     
@@ -631,16 +625,38 @@ def confirm_mask(mask):
         use_mask = False
         window.destroy()
 
+
     window = Tk()
     window.title("Confirm Mask")
 
-    # img = Image.open(mask_filename)
-    img = Image.fromarray(mask)
-    # img = img.resize((250, 250))
+
+    # Create an RGB image from the data for visualization
+    if data.ndim == 2:
+        base_img = data
+    else:
+        base_img = data[:, :, 0]
+    base_img = (base_img - np.min(base_img)) / (np.ptp(base_img) + 1e-8) * 255
+    base_img = base_img.astype(np.uint8)
+    base_img_rgb = np.stack([base_img]*3, axis=-1)
+
+
+    # Create a red mask overlay with alpha blending
+    mask_alpha = 0.2  # transparency level
+    mask_rgb = np.zeros_like(base_img_rgb)
+    mask_rgb[..., 0] = 255  # Red channel
+
+
+    overlay = base_img_rgb.copy()
+    mask_bool = mask > 0
+    overlay[mask_bool] = (mask_alpha * mask_rgb[mask_bool] + (1 - mask_alpha) * base_img_rgb[mask_bool]).astype(np.uint8)
+
+
+    img = Image.fromarray(overlay)
     img = ImageTk.PhotoImage(img)
     panel = Label(window, image=img)
     panel.image = img 
     panel.pack()
+
 
     Label(window, text="Is the Mask Correct?").pack(pady=(10, 0))
     Button(window, text='Yes', command=submit_yes).pack()
@@ -648,14 +664,18 @@ def confirm_mask(mask):
 
     window.mainloop()
 
+
     return use_mask
 
 def get_tissue_mask(data):
         
     # if is_one_region:
     if data.ndim == 3:          # We only care about the first frame
-        all_data = data.copy()
         data = data[:, :, 0]
+
+    # Improve data for the mask
+    data = exposure.equalize_hist(data)  # Histogram equalization
+    data = filters.gaussian(data, sigma=5)  # Smooth the data
 
     # # Apply Otsu's threshold to the data
     threshold_value = filters.threshold_otsu(data)
@@ -673,13 +693,16 @@ def get_tissue_mask(data):
         largest_mask = labeled_slice == largest_region.label
         binary_mask = largest_mask
 
-    mask_correct = confirm_mask(binary_mask.astype(np.uint8) * 255)
+    # Fill any holes in the mask
+    mask_area = np.sum(binary_mask)
+    binary_mask = morphology.remove_small_holes(binary_mask, area_threshold=mask_area / 5)
+
+    mask_correct = confirm_mask(binary_mask.astype(np.uint8) * 255, data)
 
     # else:
     if not mask_correct:
-        max_data = np.max(all_data, axis=2)
         _, ax = plt.subplots()
-        selector = MaskSelector(ax, max_data)
+        selector = MaskSelector(ax, data)
         plt.show()
 
         binary_mask = selector.mask
@@ -689,12 +712,13 @@ def get_tissue_mask(data):
 
 def evaluate_regional_intensities(data, regions):
     nregions = np.max(regions)
-    nframes = data.shape[2]
+    nframes = data.shape[0]
 
     intensities = np.zeros((nframes, nregions))
 
     for i in range(nframes):
         for j in range(nregions):
-            intensities[i, j] = np.mean(data[regions == j+1, i])
+            frame = data[i]
+            intensities[i, j] = np.mean(frame[regions == j+1])
 
     return intensities

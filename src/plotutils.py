@@ -247,8 +247,15 @@ def plot_regions_traces_interactive(data, regions, calcium_traces, framerate=1):
 
 
 def plot_regions_traces(data, regions, calcium_traces, framerate=1):
-    traces = np.array([trace.trace for trace in calcium_traces])
-    traces_regions = np.array([trace.region for trace in calcium_traces])
+    try:
+        traces = np.array([trace.trace for trace in calcium_traces])
+        traces_regions = np.array([trace.region for trace in calcium_traces])
+    except:
+        traces = np.array([calcium_traces]).squeeze()
+        traces_regions = np.arange(1, np.max(regions) + 1) 
+
+    if data.ndim == 3:
+        data = data[:, :, 0]
 
     # Create the figure and subplots
     fig, axes = plt.subplots(1, 2, figsize=(12, 6))
@@ -256,7 +263,7 @@ def plot_regions_traces(data, regions, calcium_traces, framerate=1):
 
     # Left subplot: show the warped data with regions overlay
     warped_ax = axes[0]
-    warped_im = warped_ax.imshow(data[:, :, 0], cmap='gray', aspect='auto')
+    warped_im = warped_ax.imshow(data, cmap='gray', aspect='auto')
     warped_ax.set_title('Warped Data with Regions')
     warped_ax.axis('off')
 

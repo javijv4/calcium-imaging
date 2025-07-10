@@ -25,5 +25,6 @@ dependencies = [
   "scikit-image",
   "tqdm",
   "pandas",
-  "itk-elastix"
+  "itk-elastix",
+  "h5py"
 ]
