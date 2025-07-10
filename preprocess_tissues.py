@@ -20,6 +20,7 @@ import imregistration as imreg
 import imutils as imu
 import calcium_analysis as ca
 import plotutils as pu
+from mat2tif import *
 
 
 def select_folder():
@@ -63,11 +64,12 @@ for fname in mat_files:
 
     # Load data
     data = imu.load_data(fname, videothresh=videothresh)
+    data = data.transpose((1, 0, 2))
 
     # Get tissue mask
     if force_mask_creation or not os.path.exists(f'{path}/{sample}_tissue_mask.tif'):
         print('Creating tissue mask...')
-        mask = imu.get_tissue_mask(data)  # This will create a binary mask of the tissue
+        mask = (imu.get_tissue_mask(data))#.T  # This will create a binary mask of the tissue
         skio.imsave(f'{path}/{sample}_tissue_mask.tif', mask.astype(np.uint8) * 255)  # Save mask for visualization
     else:
         print('Loading existing tissue mask...')
@@ -86,27 +88,37 @@ for fname in mat_files:
         print('Loading warped images...')
         warped_data = io.loadmat(f'{path}/{sample}_warped.mat')['warped_data']
 
-    # Rotate the data such that the tissue is vertical
-    if not os.path.exists(f'{path}/{sample}_tissue_mask_rotated.tif'):
-        # print('Rotating data...')
-        # warped_data, mask = imu.rotate_data(warped_data, mask)
-        # skio.imsave(f'{path}/{sample}_tissue_mask_rotated.tif', mask.astype(np.uint8) * 255)
-        continue
-    else:
-        print("Loading Rotated Image & Mask")
-        mask = skio.imread(f'{path}/{sample}_tissue_mask_rotated.tif') // 255
-        warped_data = skio.imread(f'{path}/{sample}_warped_tissue_rotated.tif')
+    # # Rotate the data such that the tissue is vertical
+    # if not os.path.exists(f'{path}/{sample}_tissue_mask_rotated.tif'):
+    #     # print('Rotating data...')
+    #     # warped_data, mask = imu.rotate_data(warped_data, mask)
+    #     # skio.imsave(f'{path}/{sample}_tissue_mask_rotated.tif', mask.astype(np.uint8) * 255)
+    #     continue
+    # else:
+    #     # print("Loading Rotated Image & Mask")
+    #     # mask = skio.imread(f'{path}/{sample}_tissue_mask_rotated.tif') // 255
+    #     # warped_data = skio.imread(f'{path}/{sample}_warped_tissue_rotated.tif')
+    #     continue
 
     # Divide the tissue in regions
     if not os.path.exists(f'{path}/{sample}_region_information.npz'):
         print("Selecting regions")
-        if warped_data.ndim == 3:
-            data_2d = warped_data[:,:,0]
-            warped_data = data_2d.reshape((data_2d.shape[0], data_2d.shape[1], 1))
-        if mask.ndim == 3:
-            data_2d = mask[:,:,0]
-            mask = data_2d.reshape((data_2d.shape[0], data_2d.shape[1], 1))
-        regions, is_one_region = imu.divide_regions_choice(warped_data, mask, nx=tissue_div_x, ny=tissue_div_y)
-        np.savez(f'{path}/{sample}_region_information.npz', reg=regions, type=np.array([is_one_region]))
+        # warped_data = warped_data.transpose((1, 0, 2))
+        data_2d = warped_data[:,:,0] if warped_data.ndim == 3 else warped_data
+        #     warped_data = data_2d.reshape((data_2d.shape[0], data_2d.shape[1], 1))
+        # else:
+        #     warped_data = data_2d.reshape((data_2d.shape[0], data_2d.shape[1], 1))
+        mask_2d = mask[:,:,0] if mask.ndim == 3 else mask
+            # mask = data_2d.reshape((data_2d.shape[0], data_2d.shape[1], 1))
+        warped_data = data_2d.reshape((data_2d.shape[0], data_2d.shape[1], 1))
+        mask = mask_2d.reshape((mask_2d.shape[0], mask_2d.shape[1], 1))
+        warped_data, mask = imu.rotate_data(warped_data, mask)
+        # regions, is_one_region = imu.divide_regions_choice(warped_data, mask, nx=tissue_div_x, ny=tissue_div_y)
+        thresh, is_one_region = imu.divide_regions_choice(warped_data, mask, nx=tissue_div_x, ny=tissue_div_y)
+        if is_one_region:
+            region_params = [tissue_div_x, tissue_div_y]
+        else:
+            region_params = [thresh, 0]
+        np.savez(f'{path}/{sample}_region_information.npz', reg=np.array(region_params), type=np.array([is_one_region]))
     else:
         print("Regions already analyzed and saved")

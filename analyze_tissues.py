@@ -60,17 +60,18 @@ for fname in filenames:
 
     # Load data
     data = imu.load_data(fname, videothresh=videothresh)
+    data = data.transpose((1, 0, 2))
 
     # Get tissue mask
     if force_mask_creation or not os.path.exists(f'{path}/{sample}_tissue_mask.tif'):
         print('Creating tissue mask...')
         mask = imu.get_tissue_mask(data)  # This will create a binary mask of the tissue
-        skio.imsave(f'{path}/{sample}_tissue_mask.tif', mask.T.astype(np.uint8) * 255)  # Save mask for visualization
+        skio.imsave(f'{path}/{sample}_tissue_mask.tif', mask.astype(np.uint8) * 255)  # Save mask for visualization
     else:
         print('Loading existing tissue mask...')
         # Load the saved mask
         mask = skio.imread(f'{path}/{sample}_tissue_mask.tif') // 255  # Load the mask and convert to binary (0s and 1s)
-        mask = mask.T.astype(bool)  # Ensure it's binary for consistency
+        mask = mask.astype(bool)  # Ensure it's binary for consistency
 
     # Register
     if force_registration or not os.path.exists(f'{path}/{sample}_warped.mat'):
@@ -86,7 +87,9 @@ for fname in filenames:
     # Rotate the data such that the tissue is vertical
     if not os.path.exists(f'{path}/{sample}_tissue_mask_rotated.tif'):
         print('Rotating data...')
-        warped_data, mask = imu.rotate_data(warped_data, mask)
+        # if mask.ndim == 2:
+        #     mask = mask.reshape((mask.shape[0], mask.shape[1], 1))
+        warped_data, mask = imu.rotate_data_cv2(warped_data, mask)
         skio.imsave(f'{path}/{sample}_tissue_mask_rotated.tif', mask.astype(np.uint8) * 255)
         skio.imsave(f'{path}/{sample}_warped_tissue_rotated.tif', warped_data)
     else:
@@ -95,9 +98,18 @@ for fname in filenames:
         warped_data = skio.imread(f'{path}/{sample}_warped_tissue_rotated.tif')
 
     # Divide the tissue in regions
-    region_info = np.load(f'{path}/{sample}_region_information.npz')
-    regions = region_info['reg']
-    is_one_region = region_info['type'][0]
+    if os.path.exists(f'{path}/{sample}_region_information.npz'):
+        print("Loading Regions...")
+        region_info = np.load(f'{path}/{sample}_region_information.npz')
+        # regions = region_info['reg']
+        is_one_region = region_info['type'][0]
+        reg_params = region_info['reg']
+        if is_one_region:
+            regions = imu.divide_tissue_in_regions(mask=mask, nx=reg_params[0], ny=reg_params[1])
+        else:
+            regions = imu.apply_threshold(final_threshold=reg_params[0], data=warped_data[:,:,0], tissue_mask=mask)
+    else:
+        print("Run Preprocess_Tissues code to create regions")
 
     # Evaluate intensities in the whole tissue
     if is_one_region:

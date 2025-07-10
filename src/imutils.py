@@ -170,16 +170,16 @@ def rotate_data_cv2(data, mask):
     rotated_data = np.empty((len(keep_rows), w, data.shape[2]), dtype=data.dtype)
     for i in range(data.shape[2]):
         rotated_frame = cv2.warpAffine(data[:, :, i], rot_mat, (w, h),
-                                       flags=cv2.INTER_LINEAR,
-                                       borderMode=cv2.BORDER_CONSTANT,
-                                       borderValue=0)
+                                    flags=cv2.INTER_LINEAR,
+                                    borderMode=cv2.BORDER_CONSTANT,
+                                    borderValue=0)
         rotated_data[:, :, i] = rotated_frame[keep_rows, :]
 
     return rotated_data, rotated_mask_bool
 
 def rotate_data(data, mask):
     # Find the major axis of the mask and rotate the mask
-    props = measure.regionprops(mask.astype(int))
+    props = measure.regionprops(mask[:,:,0].astype(int))
 
     if len(props) > 0:
         # Get the orientation of the largest region
@@ -265,7 +265,10 @@ def divide_tissue_in_regions(mask, nx=20, ny=5):
 
 # GUI for manual thresholding
 def find_tissue_regions_interactively(data, tissue_mask):
-    max_data = np.max(data, axis=2)
+    if data.ndim != 2:
+        max_data = np.max(data, axis=2)
+    else:
+        max_data = data
     if tissue_mask.ndim == 3:
         tissue_mask = tissue_mask[:, :, 0]
 
@@ -301,6 +304,27 @@ def find_tissue_regions_interactively(data, tissue_mask):
 
     # Final threshold value after slider adjustment
     final_threshold = slider.val
+
+    return final_threshold
+    # binary_mask = max_data > final_threshold
+    # binary_mask[tissue_mask == 0] = 0
+
+    # # Apply morphological operations
+    # binary_mask = morphology.binary_opening(binary_mask, footprint=morphology.disk(5))
+
+    # # Grab regions
+    # regions = measure.label(binary_mask)  # Label connected components
+    
+    # return regions
+
+def apply_threshold(final_threshold, data, tissue_mask):
+    if data.ndim != 2:
+        max_data = np.max(data, axis=2)
+    else:
+        max_data = data
+    if tissue_mask.ndim == 3:
+        tissue_mask = tissue_mask[:, :, 0]
+
     binary_mask = max_data > final_threshold
     binary_mask[tissue_mask == 0] = 0
 
@@ -518,7 +542,7 @@ def divide_regions_choice(data, mask, nx, ny):
         # return find_tissue_regions(data, mask), False
         return find_tissue_regions_interactively(data, mask), False
     else:
-        return divide_tissue_in_regions(mask, nx=nx, ny=ny), True
+        return 0, True
 
 def normalize_image(image):
     min_intensity = np.min(image)
