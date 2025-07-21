@@ -51,7 +51,8 @@ mat_files = sorted(mat_files)
 filenames = [f for f in mat_files if not f.endswith('_warped.mat')]
 
 # If you want to process only a specific file, uncomment the next line and specify the file path
-# filenames = ['test_data2/nofibers_iPSCCF_day7-01.mat']
+# filenames = ['test_data2/nofibers_0CF_day7-01.mat']
+# filenames = ['test_data3/NHCF_fibers_day7-03.mat']
 
 processing_times = []
 failed_analyses = []
