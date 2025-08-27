@@ -71,6 +71,87 @@ def analyze_trace(trace):
     return filt_trace, max_peaks_idx, min_peaks_idx
 
 
+def analyze_trace_fft(trace, framerate=1, width_factor=1/5):
+    min_freq = framerate / 60 / 2  # Minimum frequency to consider (0.5 Hz)
+    max_freq = framerate / 5   # Maximum frequency to consider (sampling rate)
+
+    # Filter trace using Savitzky-Golay filter (line 163)
+    filt_trace = savgol_filter(trace, window_length=21, polyorder=7)
+
+    # Detrend the filtered trace to remove any linear trend
+    filt_trace_detrend = detrend(filt_trace)
+    
+    # Compute the FFT of the trace
+    fft_trace = np.fft.fft(filt_trace_detrend)
+    fft_freq = np.fft.fftfreq(len(filt_trace_detrend), d=1/framerate)
+    fft_trace = fft_trace[(fft_freq >= min_freq) & (fft_freq <= max_freq)]
+    fft_freq = fft_freq[(fft_freq >= min_freq) & (fft_freq <= max_freq)]
+    order = np.argsort(fft_freq)
+    fft_trace = fft_trace[order]
+    fft_freq = fft_freq[order]
+
+    # Weight higher frequencies more heavily
+    fft_trace = np.abs(fft_trace) ** 2
+    fft_trace /= np.max(fft_trace)  # Normalize
+
+    # Find the peak frequency
+    peak_freq = fft_freq[np.argmax(fft_trace)]
+    peak_period = 1 / peak_freq if peak_freq > 0 else 0
+    peak_period_frames = peak_period * framerate
+
+
+
+    # Find max peaks 
+    prominence = (np.max(filt_trace_detrend) - np.min(filt_trace_detrend)) * 0.2
+    max_peaks_idx, _ = find_peaks(filt_trace_detrend, width=peak_period_frames*width_factor, prominence=prominence)
+
+
+    if len(max_peaks_idx) <= 2:         # If there are not enough peaks, return empty lists
+        return filt_trace, [], []
+
+    # Find min peaks
+    min_peaks_idx, _ = find_peaks(-filt_trace, width=peak_period_frames*width_factor, prominence=prominence)
+
+    # Fix the drift in the signal
+    min_peaks_value = filt_trace[min_peaks_idx]
+    correction_value_peaks = min_peaks_value[0] - min_peaks_value
+    correction_value_frames = np.interp(np.arange(len(filt_trace)), min_peaks_idx, correction_value_peaks)
+    filt_trace = filt_trace + correction_value_frames
+
+    # Correcting peaks such that they alternate between min and max
+    all_peaks_idx = np.sort(np.concatenate((max_peaks_idx, min_peaks_idx)))
+    all_peaks_class = np.isin(all_peaks_idx, max_peaks_idx)
+
+    # Ensure peaks start with a min and end with a max, and alternate min/max
+    # Remove all leading max peaks if present
+    first_min_idx = np.argmax(~all_peaks_class)
+    all_peaks_idx = all_peaks_idx[first_min_idx:]
+    all_peaks_class = all_peaks_class[first_min_idx:]
+
+    # Remove all trailing min peaks if present
+    while len(all_peaks_class) > 0 and not all_peaks_class[-1]:
+        all_peaks_idx = all_peaks_idx[:-1]
+        all_peaks_class = all_peaks_class[:-1]
+
+    # Enforce alternation: min, max, min, max, ...
+    keep = [0]
+    for i in range(1, len(all_peaks_class)):
+        if all_peaks_class[i] != all_peaks_class[keep[-1]]:
+            keep.append(i)
+    all_peaks_idx = all_peaks_idx[keep]
+    all_peaks_class = all_peaks_class[keep]
+
+    # Update max/min peaks idx
+    max_peaks_idx = all_peaks_idx[all_peaks_class]
+    min_peaks_idx = all_peaks_idx[~all_peaks_class]
+
+    if len(max_peaks_idx) <= 2:         # If there are not enough peaks, return empty lists
+        return filt_trace, [], []
+
+
+    return filt_trace, max_peaks_idx, min_peaks_idx
+
+
 def trace_outputs(trace, max_peaks_idx, min_peaks_idx, fps):
     # Crop the trace such that it starts in a valley and finishes in a peak
     crop_trace = trace[min_peaks_idx[0]:max_peaks_idx[-1]+1]

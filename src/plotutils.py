@@ -257,34 +257,34 @@ def plot_regions_traces(data, regions, calcium_traces, framerate=1):
     if data.ndim == 3:
         data = data[:, :, 0]
 
-    # Create the figure and subplots
-    fig, axes = plt.subplots(1, 2, figsize=(12, 6))
-    plt.subplots_adjust(bottom=0.2)
-
-    # Left subplot: show the warped data with regions overlay
-    warped_ax = axes[0]
-    warped_im = warped_ax.imshow(data, cmap='gray', aspect='auto')
-    warped_ax.set_title('Warped Data with Regions')
-    warped_ax.axis('off')
+    # --- Figure 1: Warped Data with Regions Overlay ---
+    fig1, ax1 = plt.subplots(figsize=(4, 4.5))
+    ax1.axis('off')
+    ax1.set_title('Regions')
+    ax1.imshow(data, cmap='gray', aspect='auto')
 
     # Overlay regions with transparency
     masked_regions = regions.astype(np.float32)  # Ensure regions is float for proper alpha blending
     masked_regions[regions == 0] = np.nan  # Set regions == 0 to NaN for transparency
     masked_regions = np.ma.masked_invalid(masked_regions)
-    regions_overlay = warped_ax.imshow(
+    ax1.imshow(
         masked_regions, cmap='jet', alpha=0.6, aspect='auto', norm=Normalize(vmin=1, vmax=np.max(regions))
     )
 
-    # Right subplot: plot the traces
-    traces_ax = axes[1]
+    # --- Figure 2: Traces ---
+    fig2, ax2 = plt.subplots(figsize=(5, 4.5))
+    if len(traces) == 0:
+        return fig1, fig2
     time = np.arange(traces.shape[1]) / framerate
     cmap = plt.get_cmap('jet', np.max(regions))  # Use the same colormap as the regions
     for trace, region in zip(traces, traces_regions):
-        color = to_rgba(cmap(region))  # Get the color corresponding to the region
-        traces_ax.plot(time, trace, alpha=1.0, color=color)
-    traces_ax.set_title('Traces')
-    traces_ax.set_xlabel('Time (s)')
-    traces_ax.set_ylabel('Intensity')
+        color = to_rgba(cmap(region-1))  # Get the color corresponding to the region
+        ax2.plot(time, trace, alpha=1.0, color=color)
+    ax2.set_title('Traces')
+    ax2.set_xlabel('Time (s)')
+    ax2.set_ylabel('Intensity')
+
+    return fig1, fig2
 
 
 def save_png_points(points, data, displacement_fields, output_dir='pngs'):

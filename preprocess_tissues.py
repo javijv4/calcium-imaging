@@ -37,6 +37,7 @@ tissue_div_y = 6
 imreg.NCORES = 10                   # Number of cores for registration 
 threshold_value = 0                 # If 0, otsu thresholding is used
 force_preprocessing = True          # Force the preprocessing of the data, even if the preprocessing file already exists
+region_choice = 'grid'            # 'manual' or 'intensity' or 'grid' region selection
 
 # Select a folder using the GUI
 selected_folder = select_folder()
@@ -49,7 +50,7 @@ mat_files = sorted(mat_files)
 mat_files = [f for f in mat_files if not f.endswith('_warped.mat')]
 
 # If you want to process only a specific file, uncomment the next line and specify the file path
-mat_files = ['test_data2/nofibers_iPSCCF_day7-01.mat']
+# mat_files = ['test_data2/nofibers_iPSCCF_day7-01.mat']
 
 preprocessing_times = []
 for fname in mat_files:
@@ -71,7 +72,7 @@ for fname in mat_files:
 
     # Get tissue mask
     print('Creating tissue mask...')
-    mask = (imu.get_tissue_mask(data))#.T  # This will create a binary mask of the tissue
+    mask = (imu.get_tissue_mask(data))      # This will create a binary mask of the tissue
     skio.imsave(f'{path}/{sample}_tissue_mask.tif', mask.astype(np.uint8) * 255)  # Save mask for visualization
 
     # Divide the tissue in regions
@@ -83,11 +84,23 @@ for fname in mat_files:
     mask_2d = mask_2d.reshape((mask_2d.shape[0], mask_2d.shape[1], 1))
     data_2d, mask_2d = imu.rotate_data(data_2d, mask_2d)
     
-    thresh, is_one_region = imu.divide_regions_choice(data_2d, mask_2d, nx=tissue_div_x, ny=tissue_div_y)
-    if is_one_region:
-        region_params = [tissue_div_x, tissue_div_y]
-    else:
+    if region_choice == 'manual':
+        thresh, is_one_region = imu.divide_regions_choice(data_2d, mask_2d, nx=tissue_div_x, ny=tissue_div_y)
+        if is_one_region:
+            region_params = [tissue_div_x, tissue_div_y]
+        else:
+            region_params = [thresh, 0]
+    elif region_choice == 'intensity':
+        if data.ndim != 2:
+            max_data = np.max(data, axis=2)
+        else:
+            max_data = data
+        thresh = imu.find_tissue_regions_interactively(data_2d, mask_2d)
+        is_one_region = False
         region_params = [thresh, 0]
+    elif region_choice == 'grid':
+        is_one_region = True
+        region_params = [tissue_div_x, tissue_div_y]
 
     # Saving the data
     print('Saving preprocessing parameters..')

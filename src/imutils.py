@@ -533,7 +533,6 @@ def divide_regions_choice(data, mask, nx, ny):
     user_selection = region_division_gui(max_data, tissue_mask, ny=ny, nx=nx)
 
     if user_selection == 1:
-        # return find_tissue_regions(data, mask), False
         return find_tissue_regions_interactively(max_data, mask), False
     else:
         return 0, True
