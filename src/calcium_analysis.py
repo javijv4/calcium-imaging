@@ -29,7 +29,7 @@ def analyze_trace(trace):
         return filt_trace, [], []
 
     # Find min peaks
-    min_peaks_idx, _ = find_peaks(-filt_trace, prominence=prominence)
+    min_peaks_idx, _ = find_peaks(-filt_trace_detrend, prominence=prominence)
 
     # Fix the drift in the signal
     min_peaks_value = filt_trace[min_peaks_idx]

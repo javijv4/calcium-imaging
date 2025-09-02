@@ -232,6 +232,7 @@ for fname in filenames:
         fig1, fig2 = pu.plot_regions_traces(first_frame, regions, clean_traces, framerate=framerate)
         fig1.savefig(f'{path}/{sample}_regular_regions.png', dpi=300, bbox_inches='tight')
         fig2.savefig(f'{path}/{sample}_regular_traces.png', dpi=300, bbox_inches='tight')
+        plt.close('all')
 
         # Save times
         processing_times.append(timer.time() - start)
