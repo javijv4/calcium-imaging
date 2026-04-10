@@ -82,12 +82,8 @@ def run_preprocess_grid(
     sample = mat_path.stem
     out_dir.mkdir(parents=True, exist_ok=True)
     data = imu.load_data(str(mat_path), videothresh=videothresh)
-    data = data.transpose((1, 0, 2))
     mask = imu.get_tissue_mask(data, interactive=False)
-    data_2d = data[:, :, 0] if data.ndim == 3 else data
-    mask_2d = mask[:, :, 0] if mask.ndim == 3 else mask
-    data_2d = data_2d.reshape((data_2d.shape[0], data_2d.shape[1], 1))
-    mask_2d = mask_2d.reshape((mask_2d.shape[0], mask_2d.shape[1], 1))
+    data_2d, mask_2d = imu.stack_first_frame_for_rotate(data, mask)
     imu.rotate_data(data_2d, mask_2d)
     is_one_region = True
     region_params = [TISSUE_DIV_X, TISSUE_DIV_Y]
@@ -110,7 +106,6 @@ def run_analyze(sample: str, out_dir: Path) -> dict:
     mask = preprocess_info["mask"]
 
     warped_data = io.loadmat(str(out_dir / f"{sample}_warped.mat"))["warped_data"]
-    warped_data = np.swapaxes(warped_data, 0, 2)
     warped_data, mask = imu.rotate_data_cv2(warped_data, mask)
     first_frame = warped_data[0]
 
@@ -260,11 +255,11 @@ def run_analyze(sample: str, out_dir: Path) -> dict:
 
 def _registration_fingerprint(warped: np.ndarray) -> np.ndarray:
     w = warped.astype(np.float64)
-    h, wd, t = w.shape
+    t, h, wd = w.shape
+    st = max(1, t // 8)
     sh = max(1, h // 48)
     sw = max(1, wd // 48)
-    st = max(1, t // 8)
-    return w[::sh, ::sw, ::st]
+    return w[::st, ::sh, ::sw]
 
 
 def _snapshot_registration(warped: np.ndarray) -> dict:

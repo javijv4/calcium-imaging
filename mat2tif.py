@@ -15,7 +15,6 @@ def mat_to_tif(input_path, output_path):
     """
     # Load the .mat file
     image_data = imu.load_data(input_path, videothresh = (200, 500) )
-    image_data = np.swapaxes(image_data, 0, 2)
         
     # Save the image data as a .tif file
     imsave(output_path, image_data.astype(np.float32))
@@ -32,7 +31,6 @@ def mat_to_tif_warped(input_path, output_path):
     """
     # Load the .mat file
     image_data = loadmat(f'{input_path}')['warped_data']
-    image_data = np.swapaxes(image_data, 0, 2)
         
     # Save the image data as a .tif file
     imsave(output_path, image_data.astype(np.float32))

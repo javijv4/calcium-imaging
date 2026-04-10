@@ -6,13 +6,15 @@ Created on 2025/04/16 18:18:09
 @author: Javiera Jilberto Vallejos 
 '''
 
+from pathlib import Path
+
 import numpy as np
 import cv2
 
-from scipy.io import loadmat
+from scipy.io import loadmat, savemat
 from scipy.spatial import KDTree
 
-from skimage import filters, morphology, measure, draw, transform, exposure
+from skimage import io, filters, morphology, measure, draw, transform, exposure
 
 import matplotlib.pyplot as plt
 from matplotlib.widgets import PolygonSelector, SpanSelector
@@ -22,74 +24,143 @@ import tkinter as tk
 from tkinter import ttk
 from PIL import Image, ImageTk
 
+import tifffile
+
+
+def time_axis_volume(volume: np.ndarray) -> int:
+    """Infer which axis of a 3D array is time (shortest dimension)."""
+    if volume.ndim != 3:
+        raise ValueError("Expected 3D array")
+    return int(np.argmin(volume.shape))
+
+
+def first_frame_2d(data: np.ndarray) -> np.ndarray:
+    """First temporal frame as 2D for (T,H,W) or (H,W,T) style volumes."""
+    if data.ndim != 3:
+        return data
+    return np.take(data, 0, axis=time_axis_volume(data))
+
+
+def max_over_time(data: np.ndarray) -> np.ndarray:
+    """Max projection along the time axis for 3D volumes."""
+    if data.ndim == 2:
+        return data
+    return np.max(data, axis=time_axis_volume(data))
+
+
+def mask_to_2d(mask: np.ndarray) -> np.ndarray:
+    """First slice along time for 3D masks."""
+    if mask.ndim != 3:
+        return mask
+    return np.take(mask, 0, axis=time_axis_volume(mask))
+
+
+def stack_first_frame_for_rotate(data: np.ndarray, mask: np.ndarray):
+    """
+    Build (1, H, W) volumes for :func:`rotate_data` from a (T, H, W) stack and a 2D or 3D mask.
+
+    Preprocessing keeps ``load_data`` orientation (time first); this takes the first frame
+    and adds a singleton time axis so ``rotate_data`` can run unchanged.
+    """
+    if data.ndim != 3:
+        raise ValueError("data must be a (T, H, W) volume")
+    frame = data[0, :, :]
+    m2 = mask_to_2d(mask) if mask.ndim == 3 else mask
+    data_3d = frame.reshape((1, frame.shape[0], frame.shape[1]))
+    mask_3d = m2.reshape((1, m2.shape[0], m2.shape[1]))
+    return data_3d, mask_3d
+
+
 # Loading Data
-def load_data(fname, videothresh=None, fix_cut=True):
-    print(f"Loading data from {fname}")
+def _is_mat73(path):
+    with open(path, 'rb') as f:
+        header = f.read(128)
+    return b'HDF5' in header
 
+
+def load_mat(fname):
+    """Load MATLAB variable ``data`` as a (T, H, W) float array."""
     import h5py
-    def is_mat73(fname):
-        """Check whether the .mat file is in v7.3 (HDF5) format."""
-        with open(fname, 'rb') as f:
-            header = f.read(128)
-        return b'HDF5' in header
 
-    if is_mat73(fname):
-        # print("Detected v7.3+ .mat file — using h5py.")
+    if _is_mat73(fname):
         with h5py.File(fname, 'r') as f:
-            # Mimic ['data'][0][0] from loadmat
             data_ref = f['data'][()][0, 0]
             data_group = f[data_ref]
-
             images = []
             for i in range(len(data_group)):
-                # Each entry is a reference to a matrix, so dereference and grab [0]
                 ref = data_group[str(i)][0]
                 image = f[ref][()]
                 images.append(image)
     else:
-        # print("Detected v7 or earlier .mat file — using scipy.io.loadmat.")
-        mat = loadmat(fname, variable_names=['data']) 
+        mat = loadmat(fname, variable_names=['data'])
         data_struct = mat['data'][0][0]
-
         images = []
         for i in range(len(data_struct)):
             images.append(data_struct[i][0])
 
-    data = np.dstack(images)
+    return np.stack(images, axis=0)
+
+
+def load_tif(fname):
+    """Load a multi-page TIFF as (T, H, W)."""
+    arr = tifffile.imread(fname)
+    if arr.ndim == 2:
+        arr = arr[np.newaxis, ...]
+    elif arr.ndim != 3:
+        raise ValueError(f"Expected 2D or 3D TIFF array, got shape {arr.shape}")
+    return np.asarray(arr)
+
+
+def load_data(fname, videothresh=None, fix_cut=True):
+    print(f"Loading data from {fname}")
+
+    ext = Path(fname).suffix.lower()
+    if ext == '.mat':
+        data = load_mat(fname)
+    elif ext in ('.tif', '.tiff'):
+        data = load_tif(fname)
+    else:
+        raise ValueError(f"Unsupported file type: {ext} (use .mat or .tif/.tiff)")
 
     if fix_cut:
         data = fix_weird_cut(data)
 
-    data = data[1:-1, 1:-1]  # Remove border pixels
+    data = data[:, 1:-1, 1:-1]
 
     if videothresh is None:
         videothresh = select_region(data)
 
-    data = data[:, :, videothresh[0]:videothresh[1]]
+    data = data[videothresh[0]:videothresh[1], :, :]
 
     return data
+
 
 def load_data_scipy(fname, videothresh=None, fix_cut=True):
     print(f"Loading data from {fname}")
     data = loadmat(fname)['data'][0][0]
-
-    # Dealing with the data
     images = []
     for i in range(len(data)):
         images.append(data[i][0])
-
-    data = np.dstack(images)
+    data = np.stack(images, axis=0)
     data = fix_weird_cut(data)
-    data = data[1:-1,1:-1]        # There are some border pixels with high values
+    data = data[:, 1:-1, 1:-1]
 
     if videothresh is None:
         videothresh = select_region(data)
-    data = data[:, :, videothresh[0]:videothresh[1]]
+    data = data[videothresh[0]:videothresh[1], :, :]
 
     return data
 
+def save_data(fname, data):
+    if fname.endswith('.tif'):
+        io.imsave(fname, data.astype(np.float32))
+    elif fname.endswith('.mat'):
+        savemat(fname, {'data': data})
+    else:
+        raise ValueError(f"Unsupported file type: {fname.split('.')[-1]} (use .tif or .mat)")
+
 def select_region(data):
-    sum_values = np.sum(data, axis=(0, 1))
+    sum_values = np.sum(data, axis=(1, 2))
 
     fig, ax = plt.subplots(1)
 
@@ -123,11 +194,12 @@ def select_region(data):
     return selected_xlim
 
 def fix_weird_cut(data, cut=512):
+    """Swap left/right halves along width (axis 2) for (T, H, W) volumes."""
     new_data = np.zeros_like(data)
-    new_data[:,0:data.shape[1]-cut:,:] = data[:,cut:,:]
-    new_data[:,data.shape[1]-cut:,:] = data[:,0:cut,:]
-    data = new_data
-    return data
+    w = data.shape[2]
+    new_data[:, :, 0 : w - cut] = data[:, :, cut:]
+    new_data[:, :, w - cut :] = data[:, :, 0:cut]
+    return new_data
 
 # Data rotation options
 def rotate_data_cv2(data, mask):
@@ -135,7 +207,7 @@ def rotate_data_cv2(data, mask):
 
     if len(props) == 0:
         print("No regions found in the mask.")
-        return mask, data
+        return data, mask
 
     # Orientation and centroid
     orientation = props[0].orientation  # Radians
@@ -155,7 +227,7 @@ def rotate_data_cv2(data, mask):
 
     # Dilate padded regions
     pad_mask = rotated_mask == -1
-    pad_mask = morphology.binary_dilation(pad_mask)
+    pad_mask = morphology.dilation(pad_mask)
     rotated_mask[pad_mask] = -1  # Re-assign after dilation
 
     # Crop: keep rows without abrupt transitions
@@ -179,7 +251,7 @@ def rotate_data_cv2(data, mask):
 
 def rotate_data(data, mask):
     # Find the major axis of the mask and rotate the mask
-    props = measure.regionprops(mask[:,:,0].astype(int))
+    props = measure.regionprops(mask_to_2d(mask).astype(int))
 
     if len(props) > 0:
         # Get the orientation of the largest region
@@ -193,7 +265,7 @@ def rotate_data(data, mask):
         rotated_mask = np.round(rotated_mask).astype(int)
 
         pad_mask = rotated_mask == -1
-        pad_mask = morphology.binary_dilation(pad_mask)
+        pad_mask = morphology.dilation(pad_mask)
 
         rotated_mask[pad_mask] = -1
 
@@ -204,9 +276,15 @@ def rotate_data(data, mask):
         rotated_mask = rotated_mask[keep, :]
         rotated_mask = np.isclose(rotated_mask, 1)
 
-        # Rotate the data to align with the rotated mask
-        rotated_data = [transform.rotate(data[:,:,i], angle=np.degrees(-orientation), center=centroid, preserve_range=True) for i in range(data.shape[2])]
-        rotated_data = np.dstack([frame[keep, :] for frame in rotated_data])
+        ta = time_axis_volume(data)
+        nframes = data.shape[ta]
+        rotated_frames = []
+        for i in range(nframes):
+            frame = np.take(data, i, axis=ta)
+            rotated_frames.append(
+                transform.rotate(frame, angle=np.degrees(-orientation), center=centroid, preserve_range=True)
+            )
+        rotated_data = np.stack([frame[keep, :] for frame in rotated_frames], axis=ta)
     else:
         print("No regions found in the mask.")
         rotated_mask = mask
@@ -217,7 +295,7 @@ def rotate_data(data, mask):
 # Automated thresholding
 def divide_tissue_in_regions(mask, nx=20, ny=5):
     if mask.ndim == 3:
-        mask = mask[:, :,0]
+        mask = mask_to_2d(mask)
 
     # Get center of cells
     xlimits = np.where(np.sum(mask, axis=1)>0)[0]
@@ -262,7 +340,7 @@ def divide_tissue_in_regions(mask, nx=20, ny=5):
 # GUI for manual thresholding
 def find_tissue_regions_interactively(max_data, tissue_mask):
     if tissue_mask.ndim == 3:
-        tissue_mask = tissue_mask[:, :, 0]
+        tissue_mask = mask_to_2d(tissue_mask)
 
     fig, ax = plt.subplots()
     plt.subplots_adjust(bottom=0.25)
@@ -302,7 +380,7 @@ def find_tissue_regions_interactively(max_data, tissue_mask):
     # binary_mask[tissue_mask == 0] = 0
 
     # # Apply morphological operations
-    # binary_mask = morphology.binary_opening(binary_mask, footprint=morphology.disk(5))
+    # binary_mask = morphology.opening(binary_mask, footprint=morphology.disk(5))
 
     # # Grab regions
     # regions = measure.label(binary_mask)  # Label connected components
@@ -311,17 +389,17 @@ def find_tissue_regions_interactively(max_data, tissue_mask):
 
 def apply_threshold(final_threshold, data, tissue_mask):
     if data.ndim != 2:
-        max_data = np.max(data, axis=2)
+        max_data = max_over_time(data)
     else:
         max_data = data
     if tissue_mask.ndim == 3:
-        tissue_mask = tissue_mask[:, :, 0]
+        tissue_mask = mask_to_2d(tissue_mask)
 
     binary_mask = max_data > final_threshold
     binary_mask[tissue_mask == 0] = 0
 
     # Apply morphological operations
-    binary_mask = morphology.binary_opening(binary_mask, footprint=morphology.disk(5))
+    binary_mask = morphology.opening(binary_mask, footprint=morphology.disk(5))
 
     # Grab regions
     regions = measure.label(binary_mask)  # Label connected components
@@ -408,11 +486,11 @@ def threshold_gui(image_array, mask=None):
 # Manual region selection w/ otsu
 def find_tissue_regions(data, tissue_mask, threshold_value=None):
     if data.ndim != 2:
-        max_data = np.max(data, axis=2)
+        max_data = max_over_time(data)
     else:
         max_data = data
     if tissue_mask.ndim == 3:
-        tissue_mask = tissue_mask[:, :, 0]
+        tissue_mask = mask_to_2d(tissue_mask)
 
     # Apply Otsu's threshold to the data
     if threshold_value is None:
@@ -422,7 +500,7 @@ def find_tissue_regions(data, tissue_mask, threshold_value=None):
     else:
         binary_mask = max_data > threshold_value
 
-    binary_mask = morphology.binary_opening(binary_mask, footprint=morphology.disk(5))  # Close small holes
+    binary_mask = morphology.opening(binary_mask, footprint=morphology.disk(5))  # Close small holes
     binary_mask[tissue_mask == 0] = 0  # Ensure we only consider the tissue area defined by the mask
 
     # Grab regions
@@ -520,11 +598,11 @@ def region_division_gui(image_array, mask, ny, nx):
 # Allowing user to select method for region division
 def divide_regions_choice(data, mask, nx, ny):
     if data.ndim != 2:
-        max_data = np.max(data, axis=2)
+        max_data = max_over_time(data)
     else:
         max_data = data
     if mask.ndim == 3:
-        tissue_mask = mask[:, :, 0]
+        tissue_mask = mask_to_2d(mask)
     else:
         tissue_mask = mask
 
@@ -549,8 +627,9 @@ def in_plane_footprint(size):
 
 def get_tissue_centroid(data):
     # # Apply Otsu's threshold to the data
-    threshold_value = filters.threshold_otsu(data[:,:,0])
-    binary_mask = data[:,:,0] > threshold_value
+    slice2d = first_frame_2d(data)
+    threshold_value = filters.threshold_otsu(slice2d)
+    binary_mask = slice2d > threshold_value
 
     ij = np.array(np.where(binary_mask))
     centroid = np.mean(ij, axis=1)
@@ -633,7 +712,7 @@ def confirm_mask(mask, data):
     if data.ndim == 2:
         base_img = data
     else:
-        base_img = data[:, :, 0]
+        base_img = first_frame_2d(data)
     base_img = (base_img - np.min(base_img)) / (np.ptp(base_img) + 1e-8) * 255
     base_img = base_img.astype(np.uint8)
     base_img_rgb = np.stack([base_img]*3, axis=-1)
@@ -666,11 +745,11 @@ def confirm_mask(mask, data):
 
     return use_mask
 
-def get_tissue_mask(data):
+def get_tissue_mask(data, interactive=True):
         
     # if is_one_region:
-    if data.ndim == 3:          # We only care about the first frame
-        data = data[:, :, 0]
+    if data.ndim == 3:
+        data = first_frame_2d(data)
 
     # Improve data for the mask
     data = exposure.equalize_hist(data)  # Histogram equalization
@@ -680,8 +759,8 @@ def get_tissue_mask(data):
     threshold_value = filters.threshold_otsu(data)
     binary_mask = data > threshold_value
 
-    binary_mask = morphology.binary_closing(binary_mask, footprint=morphology.disk(5))
-    binary_mask = morphology.binary_opening(binary_mask, footprint=morphology.disk(10))
+    binary_mask = morphology.closing(binary_mask, footprint=morphology.disk(5))
+    binary_mask = morphology.opening(binary_mask, footprint=morphology.disk(10))
     binary_mask = filters.gaussian(binary_mask, sigma=10) > 0.5
 
     # Keep only the largest object
@@ -694,17 +773,18 @@ def get_tissue_mask(data):
 
     # Fill any holes in the mask
     mask_area = np.sum(binary_mask)
-    binary_mask = morphology.remove_small_holes(binary_mask, area_threshold=mask_area / 5)
+    binary_mask = morphology.remove_small_holes(binary_mask, max_size=mask_area / 5)
 
-    mask_correct = confirm_mask(binary_mask.astype(np.uint8) * 255, data)
+    if interactive:
+        mask_correct = confirm_mask(binary_mask.astype(np.uint8) * 255, data)
 
-    # else:
-    if not mask_correct:
-        _, ax = plt.subplots()
-        selector = MaskSelector(ax, data)
-        plt.show()
+        # else:
+        if not mask_correct:
+            _, ax = plt.subplots()
+            selector = MaskSelector(ax, data)
+            plt.show()
 
-        binary_mask = selector.mask
+            binary_mask = selector.mask
 
     return binary_mask
 

@@ -83,7 +83,6 @@ for fname in filenames:
 
         # Rotate the data such that the tissue is vertical
         print('Rotating data...')
-        warped_data = np.swapaxes(warped_data, 0, 2)  # Swap axes to match the expected shape
         warped_data, mask = imu.rotate_data_cv2(warped_data, mask)
         first_frame = warped_data[0]
         skio.imsave(f'{path}/{sample}_tissue_mask_rotated.tif', mask.astype(np.uint8) * 255)

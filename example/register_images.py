@@ -44,14 +44,9 @@ for fname in mat_files:
     # Dealing with paths
     sample = os.path.basename(fname).replace('.mat', '')
     path = os.path.dirname(fname)
-
-    if os.path.exists(f'{path}/{sample}_warped.mat') and not force_registration:
-        print(f"File {fname} already registered. Skipping...")
-        continue
     
     start = timer.time()  # Start timing the registration
     print(f"Registering {fname}...")
-
 
     # Load data and warp
     try:
@@ -59,6 +54,8 @@ for fname in mat_files:
         warped_data, displacements = imreg.register_all_frames(data)
 
         io.savemat(f'{path}/{sample}_warped.mat', {'warped_data': warped_data})
+        imu.save_data(f'{path}/{sample}_warped.tif', warped_data)
+        imu.save_data(f'{path}/{sample}.tif', data)
     except:
         failed_analyses.append(fname)
         print(f"Error registering {fname}. Skipping this file.")

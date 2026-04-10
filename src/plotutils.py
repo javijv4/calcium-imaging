@@ -88,7 +88,7 @@ def plot_registration_results(fixed, moving, warped_img, displacement_field):
 
 
 def plot_quiver_displacement(data, displacement_field):
-    nframes = data.shape[2]
+    nframes = data.shape[0]
 
     # Create figure and axis
     fig, ax = plt.subplots()
@@ -96,15 +96,15 @@ def plot_quiver_displacement(data, displacement_field):
 
     # Initial frame
     frame_idx = 0
-    im = ax.imshow(data[:, :, frame_idx], cmap='gray')
+    im = ax.imshow(data[frame_idx, :, :], cmap='gray')
 
     # Quiver plot for displacement field
     every_nth = 50
     scale_factor = 300  # Adjust this value to scale the arrows
-    Y, X = np.mgrid[0:data.shape[0]:every_nth, 0:data.shape[1]:every_nth]
+    Y, X = np.mgrid[0:data.shape[1]:every_nth, 0:data.shape[2]:every_nth]
     quiver = ax.quiver(X, Y, 
-                       -displacement_field[::every_nth, ::every_nth, frame_idx, 0], 
-                       displacement_field[::every_nth, ::every_nth, frame_idx, 1], 
+                       -displacement_field[frame_idx, ::every_nth, ::every_nth, 0], 
+                       displacement_field[frame_idx, ::every_nth, ::every_nth, 1], 
                        color='r', scale=scale_factor)
 
     # Slider axis and slider
@@ -114,9 +114,9 @@ def plot_quiver_displacement(data, displacement_field):
     # Update function
     def update(val):
         frame_idx = int(slider.val)
-        im.set_data(data[:, :, frame_idx])
-        quiver.set_UVC(-displacement_field[::every_nth, ::every_nth, frame_idx, 0], 
-                       displacement_field[::every_nth, ::every_nth, frame_idx, 1])
+        im.set_data(data[frame_idx, :, :])
+        quiver.set_UVC(-displacement_field[frame_idx, ::every_nth, ::every_nth, 0], 
+                       displacement_field[frame_idx, ::every_nth, ::every_nth, 1])
         fig.canvas.draw_idle()
 
     # Call update function on slider value change
@@ -126,7 +126,7 @@ def plot_quiver_displacement(data, displacement_field):
 
 
 def plot_points_displacement(points, data, displacement_fields):
-    nframes = data.shape[2]
+    nframes = data.shape[0]
 
     # Create figure and axis
     fig, ax = plt.subplots()
@@ -134,7 +134,7 @@ def plot_points_displacement(points, data, displacement_fields):
 
     # Initial frame
     frame_idx = 0
-    im = ax.imshow(data[:, :, frame_idx], cmap='gray')
+    im = ax.imshow(data[frame_idx, :, :], cmap='gray')
     [ax.plot(point[1], point[0], 'b.')[0] for point in points]
     point_plots = [ax.plot(point[1], point[0], 'r.')[0] for point in points]
 
@@ -145,10 +145,10 @@ def plot_points_displacement(points, data, displacement_fields):
     # Update function
     def update(val):
         frame_idx = int(slider.val)
-        im.set_data(data[:, :, frame_idx])
+        im.set_data(data[frame_idx, :, :])
         for i, point in enumerate(points):
-            dispx = displacement_fields[point[0], point[1], frame_idx, 1]
-            dispy = displacement_fields[point[0], point[1], frame_idx, 0]
+            dispx = displacement_fields[frame_idx, point[0], point[1], 1]
+            dispy = displacement_fields[frame_idx, point[0], point[1], 0]
             disp = np.array([dispx, dispy])
             new_point = point - disp
             point_plots[i].set_data([new_point[1]], [new_point[0]])
@@ -161,7 +161,7 @@ def plot_points_displacement(points, data, displacement_fields):
 
 def plot_regions_intensity(data, regions, intensities):
     if data.ndim == 3:
-        data0 = data[:, :, 0]  # Use the first frame for plotting regions
+        data0 = data[0, :, :]  # Use the first frame for plotting regions
     else:
         data0 = data
 
@@ -208,7 +208,7 @@ def plot_regions_traces_interactive(data, regions, calcium_traces, framerate=1):
 
     # Left subplot: show the warped data with regions overlay
     warped_ax = axes[0]
-    warped_im = warped_ax.imshow(data[:, :, 0], cmap='gray', aspect='auto')
+    warped_im = warped_ax.imshow(data[0, :, :], cmap='gray', aspect='auto')
     warped_ax.set_title('Warped Data with Regions')
     warped_ax.axis('off')
 
@@ -232,12 +232,12 @@ def plot_regions_traces_interactive(data, regions, calcium_traces, framerate=1):
 
     # Add a slider for the timestep
     ax_slider = plt.axes([0.2, 0.05, 0.6, 0.03], facecolor='lightgoldenrodyellow')
-    slider = Slider(ax_slider, 'Timestep', 0, data.shape[-1] - 1, valinit=0, valstep=1)
+    slider = Slider(ax_slider, 'Timestep', 0, data.shape[0] - 1, valinit=0, valstep=1)
 
     # Update function for the slider
     def update(val):
         timestep = int(slider.val)
-        warped_im.set_data(data[:, :, timestep])
+        warped_im.set_data(data[timestep, :, :])
         vertical_line.set_xdata([timestep / framerate])
         fig.canvas.draw_idle()
 
@@ -255,7 +255,7 @@ def plot_regions_traces(data, regions, calcium_traces, framerate=1):
         traces_regions = np.arange(1, np.max(regions) + 1) 
 
     if data.ndim == 3:
-        data = data[:, :, 0]
+        data = data[0, :, :]
 
     # --- Figure 1: Warped Data with Regions Overlay ---
     fig1, ax1 = plt.subplots(figsize=(4, 4.5))
@@ -288,7 +288,7 @@ def plot_regions_traces(data, regions, calcium_traces, framerate=1):
 
 
 def save_png_points(points, data, displacement_fields, output_dir='pngs'):
-    nframes = data.shape[2]
+    nframes = data.shape[0]
 
     # # Create directory for png images if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
@@ -300,15 +300,15 @@ def save_png_points(points, data, displacement_fields, output_dir='pngs'):
 
     # Initial frame
     frame_idx = 0
-    im = ax.imshow(data[:, :, frame_idx], cmap='gray')
+    im = ax.imshow(data[frame_idx, :, :], cmap='gray')
     point_plots = [ax.plot(point[1], point[0], 'r.')[0] for point in points]
 
     # Function to update the plot for each frame
     def update_frame(frame_idx):
-        im.set_data(data[:, :, frame_idx])
+        im.set_data(data[frame_idx, :, :])
         for i, point in enumerate(points):
-            dispx = displacement_fields[point[0], point[1], frame_idx, 1]
-            dispy = displacement_fields[point[0], point[1], frame_idx, 0]
+            dispx = displacement_fields[frame_idx, point[0], point[1], 1]
+            dispy = displacement_fields[frame_idx, point[0], point[1], 0]
             disp = np.array([dispx, dispy])
             new_point = point - disp
             point_plots[i].set_data(new_point[1], new_point[0])

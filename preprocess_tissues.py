@@ -66,9 +66,8 @@ for fname in mat_files:
     start = time.time()  # Start timing the preprocessing
     print(f'Processing {sample}...')
 
-    # Load data
+    # Load data (T, H, W)
     data = imu.load_data(fname, videothresh=videothresh)
-    data = data.transpose((1, 0, 2))
 
     # Get tissue mask
     print('Creating tissue mask...')
@@ -77,11 +76,7 @@ for fname in mat_files:
 
     # Divide the tissue in regions
     print("Selecting regions")
-    data_2d = data[:,:,0] if data.ndim == 3 else data
-    mask_2d = mask[:,:,0] if mask.ndim == 3 else mask
-    
-    data_2d = data_2d.reshape((data_2d.shape[0], data_2d.shape[1], 1))
-    mask_2d = mask_2d.reshape((mask_2d.shape[0], mask_2d.shape[1], 1))
+    data_2d, mask_2d = imu.stack_first_frame_for_rotate(data, mask)
     data_2d, mask_2d = imu.rotate_data(data_2d, mask_2d)
     
     if region_choice == 'manual':
@@ -92,7 +87,7 @@ for fname in mat_files:
             region_params = [thresh, 0]
     elif region_choice == 'intensity':
         if data.ndim != 2:
-            max_data = np.max(data, axis=2)
+            max_data = imu.max_over_time(data)
         else:
             max_data = data
         thresh = imu.find_tissue_regions_interactively(data_2d, mask_2d)

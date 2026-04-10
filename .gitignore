@@ -10,3 +10,10 @@ old/
 *.npz
 *.mhd
 *.raw
+tests/output/
+
+!tests/expected/
+!tests/expected/registration_golden.npz
+!tests/expected/preprocess_golden.npz
+!tests/expected/analysis_golden.npz
+# large; generate with: pytest tests/... --regen-golden
