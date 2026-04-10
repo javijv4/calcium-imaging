@@ -83,7 +83,7 @@ def run_preprocess_grid(
     out_dir.mkdir(parents=True, exist_ok=True)
     data = imu.load_data(str(mat_path), videothresh=videothresh)
     data = data.transpose((1, 0, 2))
-    mask = imu.get_tissue_mask(data)
+    mask = imu.get_tissue_mask(data, interactive=False)
     data_2d = data[:, :, 0] if data.ndim == 3 else data
     mask_2d = mask[:, :, 0] if mask.ndim == 3 else mask
     data_2d = data_2d.reshape((data_2d.shape[0], data_2d.shape[1], 1))
