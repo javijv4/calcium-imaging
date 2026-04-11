@@ -44,27 +44,27 @@ def compute_displacements(data):
 
 
 def warp_stack(data_og, displacements):
-    """Apply per-frame displacements to align frames to frame 0."""
+    """Apply per-frame displacements to align frames to frame 0.
+
+    Matches ``warp_stack_og`` / ``imregistration.warp_stack``: default
+    ``meshgrid(i, j)`` is ``indexing='xy'``, so the raveled coordinate pairs
+    correspond to ``data_og[t, ij[:, 1], ij[:, 0]]`` then ``reshape(h, w)``.
+    """
     tlen, h, w = data_og.shape
     i = np.arange(h)
     j = np.arange(w)
-    I, J = np.meshgrid(i, j)
+    J, I = np.meshgrid(i, j, indexing='ij')
     IJ = np.vstack([I.ravel(), J.ravel()]).T
 
     warped_data = np.zeros_like(data_og)
 
     print("Warping data")
     for t in tqdm(range(tlen)):
-        disp = np.vstack(
-            [
-                displacements[t, :, :, 0].ravel(),
-                displacements[t, :, :, 1].ravel(),
-            ]
-        ).T
-        ij = IJ - disp.astype(int)
-        ij = np.clip(ij, 0, h - 1)
-
-        warped_data[t, :, :] = data_og[t, ij[:, 1], ij[:, 0]].reshape(h, w)
+        i = I.ravel() - displacements[t, :, :, 0].ravel().astype(int)
+        j = J.ravel() - displacements[t, :, :, 1].ravel().astype(int)
+        i = np.clip(i, 0, w - 1)
+        j = np.clip(j, 0, h - 1)
+        warped_data[t, :, :] = data_og[t, j, i].reshape(h, w)
 
     vmin = data_og.min()
     vmax = data_og.max()

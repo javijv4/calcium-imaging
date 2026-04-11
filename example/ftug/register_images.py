@@ -50,7 +50,7 @@ for fname in mat_files:
 
     # Load data and warp
     try:
-        data = imu.load_data(fname, videothresh=videothresh)
+        data = imu.load_data(fname, videothresh=videothresh, fix_cut=False)
         warped_data, displacements = imreg.register_all_frames(data)
 
         io.savemat(f'{path}/{sample}_warped.mat', {'warped_data': warped_data})

@@ -257,8 +257,13 @@ def plot_regions_traces(data, regions, calcium_traces, framerate=1):
     if data.ndim == 3:
         data = data[0, :, :]
 
+    aspect_ratio = data.shape[1] / data.shape[0]
+    figsize_w = 4*aspect_ratio
+    figsize_h = 4.5
+    figsize = (figsize_w, figsize_h)
+
     # --- Figure 1: Warped Data with Regions Overlay ---
-    fig1, ax1 = plt.subplots(figsize=(4, 4.5))
+    fig1, ax1 = plt.subplots(figsize=figsize)
     ax1.axis('off')
     ax1.set_title('Regions')
     ax1.imshow(data, cmap='gray', aspect='auto')

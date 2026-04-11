@@ -12,12 +12,15 @@ from scipy.signal import savgol_filter, find_peaks, detrend
 from dataclasses import dataclass
 
 
-def analyze_trace(trace):
+def analyze_trace(trace, min_peaks_found=2, detrend_trace=True):
     # Filter trace using Savitzky-Golay filter (line 163)
     filt_trace = savgol_filter(trace, window_length=21, polyorder=7)
 
     # Detrend the filtered trace to remove any linear trend
-    filt_trace_detrend = detrend(filt_trace)
+    if detrend_trace:
+        filt_trace_detrend = detrend(filt_trace)
+    else:
+        filt_trace_detrend = filt_trace
 
     # Find max peaks 
     max_signal = np.max(filt_trace_detrend)
@@ -25,7 +28,7 @@ def analyze_trace(trace):
     prominence = (max_signal - min_signal) * 0.6
     max_peaks_idx, _ = find_peaks(filt_trace_detrend, prominence=prominence)
     
-    if len(max_peaks_idx) <= 2:         # If there are not enough peaks, return empty lists
+    if len(max_peaks_idx) <= min_peaks_found:         # If there are not enough peaks, return empty lists
         return filt_trace, [], []
 
     # Find min peaks

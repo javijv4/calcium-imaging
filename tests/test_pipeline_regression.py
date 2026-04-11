@@ -41,7 +41,7 @@ TISSUE_DIV_Y = 6
 WIDTH_FACTOR = 1 / 10
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-EXAMPLE_DATA = REPO_ROOT / "example" / "data"
+EXAMPLE_DATA = REPO_ROOT / "example" / "bundle" / "data"
 EXPECTED = REPO_ROOT / "tests" / "expected"
 REGISTRATION_GOLDEN = EXPECTED / "registration_golden.npz"
 PREPROCESS_GOLDEN = EXPECTED / "preprocess_golden.npz"

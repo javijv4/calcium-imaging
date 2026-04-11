@@ -27,32 +27,25 @@ from PIL import Image, ImageTk
 import tifffile
 
 
-def time_axis_volume(volume: np.ndarray) -> int:
-    """Infer which axis of a 3D array is time (shortest dimension)."""
-    if volume.ndim != 3:
-        raise ValueError("Expected 3D array")
-    return int(np.argmin(volume.shape))
-
-
 def first_frame_2d(data: np.ndarray) -> np.ndarray:
-    """First temporal frame as 2D for (T,H,W) or (H,W,T) style volumes."""
+    """First frame ``data[0, :, :]`` for a (T, H, W) volume."""
     if data.ndim != 3:
         return data
-    return np.take(data, 0, axis=time_axis_volume(data))
+    return data[0, :, :]
 
 
 def max_over_time(data: np.ndarray) -> np.ndarray:
-    """Max projection along the time axis for 3D volumes."""
+    """Max over time (axis 0) for (T, H, W) volumes."""
     if data.ndim == 2:
         return data
-    return np.max(data, axis=time_axis_volume(data))
+    return np.max(data, axis=0)
 
 
 def mask_to_2d(mask: np.ndarray) -> np.ndarray:
-    """First slice along time for 3D masks."""
+    """First slice ``mask[0, :, :]`` for a (T, H, W) mask volume."""
     if mask.ndim != 3:
         return mask
-    return np.take(mask, 0, axis=time_axis_volume(mask))
+    return mask[0, :, :]
 
 
 def stack_first_frame_for_rotate(data: np.ndarray, mask: np.ndarray):
@@ -202,7 +195,22 @@ def fix_weird_cut(data, cut=512):
     return new_data
 
 # Data rotation options
-def rotate_data_cv2(data, mask):
+def rotate_data_cv2(data, mask, target_orientation="vertical"):
+    """
+    Rotate stack and mask so the tissue major axis matches a screen axis.
+
+    Parameters
+    ----------
+    data : ndarray, shape (T, H, W)
+    mask : ndarray, 2D
+    target_orientation : str, default ``"vertical"``
+        ``"vertical"`` — align the region major axis with the image y-axis (columns).
+        ``"horizontal"`` — align with the image x-axis (rows), i.e. 90° from vertical.
+    """
+    allowed = ("vertical", "horizontal")
+    if target_orientation not in allowed:
+        raise ValueError(f"target_orientation must be one of {allowed}, got {target_orientation!r}")
+
     props = measure.regionprops(mask.astype(int))
 
     if len(props) == 0:
@@ -213,6 +221,8 @@ def rotate_data_cv2(data, mask):
     orientation = props[0].orientation  # Radians
     centroid = props[0].centroid
     angle_deg = -np.degrees(orientation)
+    if target_orientation == "horizontal":
+        angle_deg += 90.0
     h, w = mask.shape
     center = (int(centroid[1]), int(centroid[0]))  # (x, y)
 
@@ -276,15 +286,14 @@ def rotate_data(data, mask):
         rotated_mask = rotated_mask[keep, :]
         rotated_mask = np.isclose(rotated_mask, 1)
 
-        ta = time_axis_volume(data)
-        nframes = data.shape[ta]
+        nframes = data.shape[0]
         rotated_frames = []
         for i in range(nframes):
-            frame = np.take(data, i, axis=ta)
+            frame = data[i, :, :]
             rotated_frames.append(
                 transform.rotate(frame, angle=np.degrees(-orientation), center=centroid, preserve_range=True)
             )
-        rotated_data = np.stack([frame[keep, :] for frame in rotated_frames], axis=ta)
+        rotated_data = np.stack([frame[keep, :] for frame in rotated_frames], axis=0)
     else:
         print("No regions found in the mask.")
         rotated_mask = mask
