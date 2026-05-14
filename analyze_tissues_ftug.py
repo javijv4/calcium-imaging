@@ -42,7 +42,7 @@ framerate = 65.18
 videothresh = (100, 600)         # To crop in time
 pixelsize = 0.908
 tissue_div_x = 6                # For one region tissues
-tissue_div_y = 2
+tissue_div_y = 4
 imreg.NCORES = 8                # Number of cores for registration 
 threshold_value = 0              # If 0, otsu thresholding is used
 width_factor = 1/10
@@ -109,7 +109,7 @@ for fname in filenames:
 
     # Divide the tissue in regions
     if is_one_region:
-        regions = imu.divide_tissue_in_regions(mask=mask, nx=region_params[0], ny=region_params[1])
+        regions = imu.divide_tissue_in_regions(mask=mask, nx=region_params[0], ny=region_params[1], horizontal=True)
     else:
         regions = imu.apply_threshold(final_threshold=region_params[0], data=first_frame, tissue_mask=mask)
 

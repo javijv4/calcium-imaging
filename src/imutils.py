@@ -302,9 +302,15 @@ def rotate_data(data, mask):
     return rotated_data, rotated_mask
 
 # Automated thresholding
-def divide_tissue_in_regions(mask, nx=20, ny=5):
+def divide_tissue_in_regions(mask, nx=20, ny=5, horizontal=False):
     if mask.ndim == 3:
         mask = mask_to_2d(mask)
+    if horizontal:
+        mask = mask.T
+        nx_ = ny
+        ny = nx
+        nx = nx_
+        
 
     # Get center of cells
     xlimits = np.where(np.sum(mask, axis=1)>0)[0]
@@ -343,6 +349,9 @@ def divide_tissue_in_regions(mask, nx=20, ny=5):
     # Reshaping to an image
     cell = cell.reshape(mask.T.shape).T + 1
     cell[mask==0] = 0
+
+    if horizontal:
+        cell = cell.T
 
     return cell
 
