@@ -38,7 +38,7 @@ dev = ["pytest>=7.0"]
 "" = "src"
 
 [tool.setuptools]
-py-modules = ["imregistration", "imutils", "calcium_analysis", "plotutils"]
+py-modules = ["imregistration", "imutils", "calcium_analysis", "plotutils", "gui_utils"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
