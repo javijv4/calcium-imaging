@@ -7,7 +7,6 @@ Created on 2025/07/07 13:54:13
 '''
 
 import os
-from tkinter import Tk, filedialog
 from glob import glob
 
 import numpy as np
@@ -16,21 +15,9 @@ from skimage import io as skio
 
 import imregistration as imreg
 import imutils as imu
+from gui_utils import select_folder
 
 import time
-
-
-def select_folder(initialdir=None):
-    """Open folder picker; starts in ``initialdir`` or the process current working directory."""
-    root = Tk()
-    root.withdraw()  # Hide the main Tkinter window
-    start = os.getcwd() if initialdir is None else initialdir
-    folder_path = filedialog.askdirectory(
-        title="Select a Folder",
-        initialdir=start,
-    )
-    root.destroy()  # Close the Tkinter instance
-    return folder_path
 
 
 # USER INPUTS

@@ -7,7 +7,6 @@ Created on 2025/04/16 18:16:11
 '''
 
 import os
-from tkinter import Tk, filedialog
 from glob import glob
 
 from matplotlib import pyplot as plt
@@ -20,14 +19,7 @@ import imregistration as imreg
 import imutils as imu
 import calcium_analysis as ca
 import plotutils as pu
-
-
-def select_folder():
-    root = Tk()
-    root.withdraw()  # Hide the main Tkinter window
-    folder_path = filedialog.askdirectory(title="Select a Folder")
-    root.destroy()  # Close the Tkinter instance
-    return folder_path
+from gui_utils import select_folder
 
 
 # USER INPUTS

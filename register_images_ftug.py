@@ -7,7 +7,6 @@ Created on 2025/05/06 18:16:11
 '''
 
 import os
-from tkinter import Tk, filedialog
 from glob import glob
 
 import numpy as np
@@ -15,25 +14,14 @@ from scipy import io
 
 import imregistration as imreg
 import imutils as imu
+from gui_utils import select_folder
 
 import time as timer
-
-def select_folder(initialdir=None):
-    """Open folder picker; starts in ``initialdir`` or the process current working directory."""
-    root = Tk()
-    root.withdraw()  # Hide the main Tkinter window
-    start = os.getcwd() if initialdir is None else initialdir
-    folder_path = filedialog.askdirectory(
-        title="Select a Folder",
-        initialdir=start,
-    )
-    root.destroy()  # Close the Tkinter instance
-    return folder_path
 
 # USER INPUTS
 imreg.NCORES = 10               # Number of cores for registration 
 videothresh = (0, 400)          # all frames
-force_registration = False      # Force the registration of the data, even if the registration file already exists
+force_registration = True      # Force the registration of the data, even if the registration file already exists
 save_tif = True
 
 # Select a folder using the GUI
@@ -74,9 +62,9 @@ for fname in mat_files:
         if save_tif:
             imu.save_data(f'{path}/{sample}_warped.tif', warped_data)
             imu.save_data(f'{path}/{sample}.tif', data)
-    except:
+    except Exception as e:
         failed_analyses.append(fname)
-        print(f"Error registering {fname}. Skipping this file.")
+        print(f"Error registering {fname}: {e}. Skipping this file.")
         continue
 
     registering_times.append(timer.time() - start)

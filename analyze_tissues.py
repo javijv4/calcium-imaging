@@ -18,18 +18,11 @@ import imregistration as imreg
 import imutils as imu
 import calcium_analysis as ca
 import plotutils as pu
+from gui_utils import select_folder
 
-from tkinter import Tk, filedialog
 import glob
 
 import time as timer
-
-def select_folder():
-    root = Tk()
-    root.withdraw()  # Hide the main Tkinter window
-    folder_path = filedialog.askdirectory(title="Select a Folder")
-    root.destroy()  # Close the Tkinter instance
-    return folder_path
 
 # USER INPUTS
 framerate = 65.18
