@@ -66,7 +66,9 @@ imreg.NCORES = 8                # Number of cores for registration
 threshold_value = 0             # If 0, otsu thresholding is used
 width_factor = 1/10
 plot_all_traces = True
+plot_unwarped_traces = True     # Also save all_traces using the non-warped stack
 rotate_orientation = None
+fix_cut = False
 
 # Select a folder using the GUI
 selected_folder = select_folder()
@@ -181,9 +183,30 @@ for fname in filenames:
     fig1.savefig(f'{path}/{sample}_all_regions.png', dpi=300, bbox_inches='tight')
     fig2.savefig(f'{path}/{sample}_all_traces.png', dpi=300, bbox_inches='tight')
 
-    # Synchronicity
+    # Same region-trace plot from the non-warped stack
+    filtered_raw_traces = None
+    if plot_unwarped_traces:
+        print('Plotting unwarped traces...')
+        raw_data = imu.load_data(fname, videothresh=videothresh, fix_cut=fix_cut)
+        raw_traces = imu.evaluate_regional_intensities(raw_data, regions)
+        filtered_raw_traces = []
+        for trace in raw_traces.T:
+            filtered_trace, _, _ = ca.analyze_trace_fft(trace, framerate=framerate, width_factor=width_factor)
+            filtered_raw_traces.append(filtered_trace)
+        filtered_raw_traces = np.array(filtered_raw_traces)
+        _, fig_unwarped = pu.plot_regions_traces(raw_data[0], regions, filtered_raw_traces, framerate=framerate)
+        fig_unwarped.savefig(f'{path}/{sample}_all_traces_unwarped.png', dpi=300, bbox_inches='tight')
+        plt.close(fig_unwarped)
+
+    # Synchronicity (mean pairwise correlation of regional traces)
     synchronicity = np.mean(np.corrcoef(filtered_traces))
-    print(f'Synchronicity: {synchronicity:.6f}')
+    if filtered_raw_traces is not None:
+        synchronicity_unwarped = np.mean(np.corrcoef(filtered_raw_traces))
+    else:
+        synchronicity_unwarped = ''
+    print(f'Synchronicity (warped): {synchronicity:.6f}')
+    if filtered_raw_traces is not None:
+        print(f'Synchronicity (unwarped): {synchronicity_unwarped:.6f}')
 
     # Analyze traces
     calcium_traces = []
@@ -205,10 +228,10 @@ for fname in filenames:
         valid_regions.append(ctrace.region)
 
     # Tissue outputs
-    header = ['Sample Name', 'bpm', 'bpm std', 'timing irreg', 'synchronicity', 'upstroke time', 'amplitude']
+    header = ['Sample Name', 'bpm', 'bpm std', 'timing irreg', 'synchronicity', 'synchronicity unwarped', 'upstroke time', 'amplitude']
     if tissue_calcium_trace.bpm != 0:
         fields = np.array([[sample, tissue_calcium_trace.bpm, tissue_calcium_trace.bpm_std,
-                            tissue_calcium_trace.timing_irregularity, synchronicity,
+                            tissue_calcium_trace.timing_irregularity, synchronicity, synchronicity_unwarped,
                             tissue_calcium_trace.upstroke_time, tissue_calcium_trace.amplitude]])
         np.savetxt(f'{path}/{sample}_output.csv',
                 fields,
@@ -216,14 +239,15 @@ for fname in filenames:
 
         all_outputs.append(fields)
     else:
-        all_outputs.append(np.array([[sample, '', '', '', synchronicity, '', '']]))
+        all_outputs.append(np.array([[sample, '', '', '', synchronicity, synchronicity_unwarped, '', '']]))
 
     # Region outputs
     outputs = []
     for i, ctrace in enumerate(calcium_traces):
-        header = ['Sample Name', 'Region', 'bpm', 'bpm std', 'timing irreg', 'synchronicity', 'upstroke time', 'amplitude']
+        header = ['Sample Name', 'Region', 'bpm', 'bpm std', 'timing irreg', 'synchronicity', 'synchronicity unwarped', 'upstroke time', 'amplitude']
         outputs.append([sample, ctrace.region, ctrace.bpm, ctrace.bpm_std,
-                        ctrace.timing_irregularity, synchronicity, ctrace.upstroke_time, ctrace.amplitude])
+                        ctrace.timing_irregularity, synchronicity, synchronicity_unwarped,
+                        ctrace.upstroke_time, ctrace.amplitude])
 
     np.savetxt(f'{path}/{sample}_region_output.csv',
                 np.array(outputs),
@@ -252,7 +276,7 @@ for fname in filenames:
 # Save all outputs to a single file
 if all_outputs:
     all_outputs = np.vstack(all_outputs)
-    header = ['Sample Name', 'bpm', 'bpm std', 'timing irreg', 'synchronicity', 'upstroke time', 'amplitude']
+    header = ['Sample Name', 'bpm', 'bpm std', 'timing irreg', 'synchronicity', 'synchronicity unwarped', 'upstroke time', 'amplitude']
     np.savetxt(f'{selected_folder}/all_samples_output.csv',
                all_outputs,
                delimiter=',', fmt='%s', header=','.join(header), comments='')

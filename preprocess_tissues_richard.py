@@ -62,6 +62,7 @@ imreg.NCORES = 10               # Number of cores for registration
 threshold_value = 0             # If 0, otsu thresholding is used
 force_preprocessing = True      # Force preprocessing even if preprocessing file already exists
 region_choice = 'grid'          # 'manual' or 'intensity' or 'grid' region selection
+use_tissue_mask = False         # If False, treat the whole FOV as tissue (no masking)
 fix_cut = False
 
 # Select a folder using the GUI
@@ -90,15 +91,22 @@ for fname in mat_files:
     # Load data (T, H, W)
     data = imu.load_data(fname, videothresh=videothresh, fix_cut=fix_cut)
 
-    # Get tissue mask
-    print('Creating tissue mask...')
-    mask = imu.get_tissue_mask(data)     # This will create a binary mask of the tissue
-    skio.imsave(f'{path}/{sample}_tissue_mask.tif', mask.astype(np.uint8) * 255)  # Save mask for visualization
+    # Get tissue mask (or use the full FOV)
+    if use_tissue_mask:
+        print('Creating tissue mask...')
+        mask = imu.get_tissue_mask(data)
+    else:
+        print('Using full field of view (no tissue mask)...')
+        mask = np.ones(imu.first_frame_2d(data).shape, dtype=bool)
+    skio.imsave(f'{path}/{sample}_tissue_mask.tif', mask.astype(np.uint8) * 255)
 
     # Divide the tissue in regions
     print("Selecting regions")
-    data_2d, mask_2d = imu.stack_first_frame_for_rotate(data, mask)
-    data_2d, mask_2d = imu.rotate_data(data_2d, mask_2d)
+    if use_tissue_mask:
+        data_2d, mask_2d = imu.stack_first_frame_for_rotate(data, mask)
+        data_2d, mask_2d = imu.rotate_data(data_2d, mask_2d)
+    else:
+        data_2d, mask_2d = imu.stack_first_frame_for_rotate(data, mask)
 
     if region_choice == 'manual':
         thresh, is_one_region = imu.divide_regions_choice(data_2d, mask_2d, nx=tissue_div_x, ny=tissue_div_y)
@@ -107,10 +115,6 @@ for fname in mat_files:
         else:
             region_params = [thresh, 0]
     elif region_choice == 'intensity':
-        if data.ndim != 2:
-            max_data = imu.max_over_time(data)
-        else:
-            max_data = data
         thresh = imu.find_tissue_regions_interactively(data_2d, mask_2d)
         is_one_region = False
         region_params = [thresh, 0]

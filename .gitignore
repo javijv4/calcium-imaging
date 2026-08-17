@@ -12,6 +12,7 @@ old/
 *.raw
 tests/output/
 .DS_Store
+work/
 
 !tests/expected/
 !tests/expected/registration_golden.npz
