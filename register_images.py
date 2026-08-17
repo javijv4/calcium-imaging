@@ -1,74 +1,30 @@
 #!/usr/bin/env python
-# -*-coding:utf-8 -*-
-'''
-Created on 2025/05/06 18:16:11
+# -*- coding: utf-8 -*-
+"""Register all samples in a selected folder."""
 
-@author: Javiera Jilberto Vallejos 
-'''
+from __future__ import annotations
 
-import os
-from glob import glob
-
-import numpy as np
-from scipy import io
-
-import imregistration as imreg
-import imutils as imu
+from calcium_pipeline import PipelineSettings, run_pipeline_for_folder, summarize_results
 from gui_utils import select_folder
 
-import time as timer
 
-# USER INPUTS
-imreg.NCORES = 10                # Number of cores for registration 
-videothresh = (100, 600) 
-force_registration = False  # Force the registration of the data, even if the registration file already exists
+def main() -> int:
+    selected_folder = select_folder()
+    if not selected_folder:
+        print("No folder selected. Exiting.")
+        return 0
 
-# Select a folder using the GUI
-selected_folder = select_folder()
-
-# Get all .mat files in the selected folder
-mat_files = glob(os.path.join(selected_folder, '*.mat'))
-mat_files = sorted(mat_files)
-
-# If you want to process only a specific file, uncomment the next line and specify the file path
-# mat_files = ['test_data2/nofibers_0CF_day7-01.mat']
-
-# Register each mat file
-failed_analyses = []
-registering_times = []
-for fname in mat_files:
-    
-    if 'warped' in fname:   # Skip already warped files
-        continue
-
-    # Dealing with paths
-    sample = os.path.basename(fname).replace('.mat', '')
-    path = os.path.dirname(fname)
-
-    if os.path.exists(f'{path}/{sample}_warped.mat') and not force_registration:
-        print(f"File {fname} already registered. Skipping...")
-        continue
-    
-    start = timer.time()  # Start timing the registration
-    print(f"Registering {fname}...")
+    settings = PipelineSettings(
+        videothresh_start=100,
+        videothresh_end=600,
+        registration_cores=10,
+        force_registration=False,
+    )
+    results = run_pipeline_for_folder(selected_folder, "registration", settings, log=print)
+    completed, skipped, failed = summarize_results(results)
+    print(f"Registration completed: {completed} completed, {skipped} skipped, {failed} failed.")
+    return 0 if failed == 0 else 1
 
 
-    # Load data and warp
-    try:
-        data = imu.load_data(fname, videothresh=videothresh)
-        warped_data, displacements = imreg.register_all_frames(data)
-
-        io.savemat(f'{path}/{sample}_warped.mat', {'warped_data': warped_data})
-    except Exception as e:
-        failed_analyses.append(fname)
-        print(f"Error registering {fname}: {e}. Skipping this file.")
-        continue
-
-    registering_times.append(timer.time() - start)
-
-print(f'Registration completed for {len(mat_files)} files.')
-print(f'Total registration time: {sum(registering_times):.2f} seconds.')
-print(f'Average registration time per file: {np.mean(registering_times):.2f} seconds.')
-print(f'Failed registrations: {len(failed_analyses)} files.')
-if failed_analyses:
-    print('Failed files:', failed_analyses)
+if __name__ == "__main__":
+    raise SystemExit(main())

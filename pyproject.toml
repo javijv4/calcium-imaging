@@ -32,6 +32,7 @@ dependencies = [
   "bioio",
   "bioio-nd2",
   "bioio-czi",
+  "PySide6",
 ]
 
 [project.optional-dependencies]
@@ -41,7 +42,14 @@ dev = ["pytest>=7.0"]
 "" = "src"
 
 [tool.setuptools]
-py-modules = ["imregistration", "imutils", "imio", "calcium_analysis", "plotutils", "gui_utils"]
+py-modules = ["imregistration", "imutils", "imio", "calcium_analysis", "plotutils", "gui_utils", "calcium_pipeline"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["calcium_gui*"]
+
+[project.scripts]
+calcium-imaging-gui = "calcium_gui.main:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
