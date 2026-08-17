@@ -11,6 +11,7 @@ old/
 *.mhd
 *.raw
 tests/output/
+.DS_Store
 
 !tests/expected/
 !tests/expected/registration_golden.npz

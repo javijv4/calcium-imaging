@@ -25,7 +25,7 @@ The code has three main scripts:
 2. Preprocessing `preprocess_tissues.py`
 3. Calcium Analysis `analyze_tissues.py`
 
-**You need to run these in order** . For each one of these you will select a folder containing `.mat` files to be analyzed. 
+**You need to run these in order**. For each one of these you will select a folder containing image stacks to be analyzed (`.mat`, `.tif`/`.tiff`, `.nd2`, or `.czi`). 
 
 # Outputs
 Below is a diagram of the inputs, codes, and outputs used in this repository.

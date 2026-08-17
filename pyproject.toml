@@ -12,7 +12,7 @@ authors = [
 description = "Python scripts to analyze calcium images"
 readme = "README.md"
 license = { file="LICENSE" }
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 classifiers = [
   "Programming Language :: Python :: 3",
   "License :: OSI Approved :: MIT License",
@@ -28,7 +28,10 @@ dependencies = [
   "itk-elastix",
   "h5py",
   "opencv-python",
-  "tifffile"
+  "tifffile",
+  "bioio",
+  "bioio-nd2",
+  "bioio-czi",
 ]
 
 [project.optional-dependencies]
@@ -38,7 +41,7 @@ dev = ["pytest>=7.0"]
 "" = "src"
 
 [tool.setuptools]
-py-modules = ["imregistration", "imutils", "calcium_analysis", "plotutils", "gui_utils"]
+py-modules = ["imregistration", "imutils", "imio", "calcium_analysis", "plotutils", "gui_utils"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

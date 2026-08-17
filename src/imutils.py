@@ -24,7 +24,8 @@ import tkinter as tk
 from tkinter import ttk
 from PIL import Image, ImageTk
 
-import tifffile
+import imio
+from imio import load_mat, load_tif
 
 
 def first_frame_2d(data: np.ndarray) -> np.ndarray:
@@ -65,55 +66,18 @@ def stack_first_frame_for_rotate(data: np.ndarray, mask: np.ndarray):
 
 
 # Loading Data
-def _is_mat73(path):
-    with open(path, 'rb') as f:
-        header = f.read(128)
-    return b'HDF5' in header
-
-
-def load_mat(fname):
-    """Load MATLAB variable ``data`` as a (T, H, W) float array."""
-    import h5py
-
-    if _is_mat73(fname):
-        with h5py.File(fname, 'r') as f:
-            data_ref = f['data'][()][0, 0]
-            data_group = f[data_ref]
-            images = []
-            for i in range(len(data_group)):
-                ref = data_group[str(i)][0]
-                image = f[ref][()]
-                images.append(image)
-    else:
-        mat = loadmat(fname, variable_names=['data'])
-        data_struct = mat['data'][0][0]
-        images = []
-        for i in range(len(data_struct)):
-            images.append(data_struct[i][0])
-
-    return np.stack(images, axis=0)
-
-
-def load_tif(fname):
-    """Load a multi-page TIFF as (T, H, W)."""
-    arr = tifffile.imread(fname)
-    if arr.ndim == 2:
-        arr = arr[np.newaxis, ...]
-    elif arr.ndim != 3:
-        raise ValueError(f"Expected 2D or 3D TIFF array, got shape {arr.shape}")
-    return np.asarray(arr)
-
-
-def load_data(fname, videothresh=None, fix_cut=True):
+def load_data(fname, videothresh=None, fix_cut=True, scene=0, channel=0, z=0):
     print(f"Loading data from {fname}")
 
     ext = Path(fname).suffix.lower()
     if ext == '.mat':
-        data = load_mat(fname)
+        data = imio.load_mat(fname)
     elif ext in ('.tif', '.tiff'):
-        data = load_tif(fname)
+        data = imio.load_tif(fname)
+    elif ext in ('.nd2', '.czi'):
+        data = imio.load_stack(fname, scene=scene, channel=channel, z=z)
     else:
-        raise ValueError(f"Unsupported file type: {ext} (use .mat or .tif/.tiff)")
+        raise ValueError(f"Unsupported file type: {ext} (use .mat, .tif/.tiff, .nd2, or .czi)")
 
     if fix_cut:
         data = fix_weird_cut(data)
